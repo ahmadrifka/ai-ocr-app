@@ -13,7 +13,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AI OCR App",
-    description="Upload images → LLM-powered transaction extraction, classification, and storage",
+    description="Upload images for queued LLM-powered transaction extraction and classification",
     version="0.1.0",
     lifespan=lifespan,
 )

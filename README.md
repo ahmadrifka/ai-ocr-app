@@ -4,11 +4,16 @@ FastAPI service that uses an LLM (OpenAI vision) to read images, extract text, c
 
 ## Features
 
-- **Upload** an image (JPEG, PNG, WebP, GIF, TIFF)
-- **Extraction** — LLM reads transaction details from the image and classifies the document
-- **Storage** — image saved to local filestore; extracted transaction fields and timestamps saved to Supabase PostgreSQL
+- **Upload** an image (JPEG, PNG, WebP, GIF, TIFF) with a required `Idempotency-Key`
+- **Queue** OCR work in PostgreSQL and return an upload ID immediately
+- **Process** jobs in a separate worker with bounded retries
+- **Deduplicate** transactions by normalized source bank, bank transaction ID, amount, and transaction date
+- **Store** images under `filestore/YYYY/MM/DD/<upload_id>.<ext>`
 
-Stored records are in the `public."transaction"` table and include `created_at`, `updated_at`, `transaction_date`, `description`, `category`, `transaction_type`, beneficiary/source bank and account details, `amount`, and `asset_path`. Expense receipts are initially classified from the expense-description table in the LLM prompt; if the beneficiary matches an account in `public.accounts`, the transaction is saved as `transaction_type = "INCOMING"` and `category = "sale"`. Indonesian amount dots are treated as thousands separators. Fields the image does not provide are stored as `null`; `amount` is numeric and does not store a currency because there is no currency column.
+Completed transactions are stored in `public."transaction"`; upload processing state is stored in `public.ocr_upload_job`. If OCR succeeds but any dedupe field is missing, the transaction is saved without automatic deduplication. Duplicate uploads keep the original transaction/image and remove the duplicate image after the database status is committed. Temporary OCR failures are retried up to five attempts; failed jobs retain their image for review.
+
+For local development, SQLite tables are created automatically. PostgreSQL schemas are managed by the reviewed migration only; apply it before running the API or worker against Supabase. The API and worker must share the same `FILESTORE_PATH`. Local filestore is suitable only while both processes share a filesystem.
+
 
 ## Setup
 
@@ -31,25 +36,29 @@ cp .env.example .env
 # For another OpenAI-compatible provider, set its API base URL, model and key.
 
 
-# Run
+# Run the API and worker in separate terminals
 uvicorn app.main:app --reload
+# In another terminal:
+python -m app.services.worker
 ```
 
 ## API
 
 ### `POST /api/documents/upload`
-Upload an image file. Returns extracted transaction fields, including the transaction date and category.
+Upload an image with a required `Idempotency-Key`. The API saves the file and returns `202 Accepted` with an `upload_id` and `status_url`; it does not wait for OCR. Reuse the same idempotency key when retrying the same request.
 
 ```bash
-curl -X POST http://localhost:8000/api/documents/upload \
-  -F "file=@receipt.jpg"
+curl -X POST http://localhost:8000/api/documents/upload --header "Idempotency-Key: receipt-upload-unique-request-id" --form "file=@receipt.jpg"
 ```
 
+### `GET /api/documents/uploads/{upload_id}`
+Polls the upload job and returns `PENDING`, `PROCESSING`, `COMPLETED`, `DUPLICATE`, or `FAILED`, along with attempt count and transaction record ID when available.
+
 ### `GET /api/documents/`
-List transactions. Optional query params: `skip`, `limit`, `category`.
+List stored transactions. Optional query params: `skip`, `limit`, `category`.
 
 ### `GET /api/documents/{id}`
-Get a single document by ID.
+Get a single transaction by ID.
 
 ### `GET /health`
 Health check.

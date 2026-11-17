@@ -1,6 +1,7 @@
 import datetime as dt
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,6 +27,7 @@ class DocumentOut(BaseModel):
     created_at: dt.datetime
     updated_at: dt.datetime
     transaction_date: dt.datetime | None
+    transaction_id: str | None
     description: str
     category: TransactionCategory
     transaction_type: Literal["EXPENSES", "INCOMING"]
@@ -43,6 +45,7 @@ class DocumentOut(BaseModel):
 
 class AnalysisResult(BaseModel):
     transaction_date: dt.datetime | None = None
+    transaction_id: str | None = None
     description: str
     category: ExpenseCategory
     transaction_type: Literal["EXPENSES"]
@@ -53,3 +56,16 @@ class AnalysisResult(BaseModel):
     source_account_number: str | None = None
     source_account_name: str | None = None
     amount: Decimal | None = None
+
+
+class UploadAccepted(BaseModel):
+    upload_id: UUID
+    status: str
+    status_url: str
+
+
+class UploadStatusOut(BaseModel):
+    upload_id: UUID
+    status: str
+    attempt_count: int
+    transaction_record_id: int | None

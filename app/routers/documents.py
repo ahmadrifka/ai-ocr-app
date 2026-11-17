@@ -1,25 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import uuid
+
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Transaction
-from app.schemas import DocumentOut
-from app.services.accounts import beneficiary_is_account
-from app.services.filestore import save_file
-from app.services.llm import analyze_image
+from app.models import OcrJob, Transaction
+from app.schemas import DocumentOut, UploadAccepted, UploadStatusOut
+from app.services.uploads import create_upload_job
+
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/tiff"}
 
 
-@router.post("/upload", response_model=DocumentOut, status_code=201)
+@router.post("/upload", response_model=UploadAccepted, status_code=202)
 async def upload_document(
+    response: Response,
     file: UploadFile = File(...),
+    idempotency_key: str = Header(
+        ..., alias="Idempotency-Key", min_length=1, max_length=255
+    ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload an image → extract transaction fields → save to DB and filestore."""
+    """Save an image and enqueue OCR without waiting for the LLM."""
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(
             status_code=400,
@@ -30,38 +35,40 @@ async def upload_document(
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File exceeds 20 MB limit")
 
-    # Save to filestore
-    filepath = await save_file(file.filename or "upload.bin", content)
+    idempotency_key = idempotency_key.strip()
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Idempotency-Key cannot be blank")
 
-    # Analyze with LLM
-    try:
-        result = await analyze_image(content, file.content_type)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM analysis failed: {exc}")
-
-    # Classify incoming transfers to one of our registered bank accounts.
-    incoming = await beneficiary_is_account(db, result)
-
-    # Persist to database
-    doc = Transaction(
-        transaction_date=result.transaction_date,
-        description=result.description,
-        category="sale" if incoming else result.category,
-        transaction_type="INCOMING" if incoming else result.transaction_type,
-        beneficiary_bank=result.beneficiary_bank,
-        beneficiary_account_number=result.beneficiary_account_number,
-        benecifiacry_account_name=result.benecifiacry_account_name,
-        source_bank=result.source_bank,
-        source_account_number=result.source_account_number,
-        source_account_name=result.source_account_name,
-        amount=result.amount,
-        asset_path=filepath,
+    job = await create_upload_job(
+        db,
+        filename=file.filename or "upload.bin",
+        content_type=file.content_type,
+        content=content,
+        idempotency_key=idempotency_key,
     )
-    db.add(doc)
-    await db.commit()
-    await db.refresh(doc)
+    status_url = f"/api/documents/uploads/{job.upload_id}"
+    response.headers["Location"] = status_url
+    return UploadAccepted(
+        upload_id=job.upload_id,
+        status=job.status,
+        status_url=status_url,
+    )
 
-    return doc
+
+@router.get("/uploads/{upload_id}", response_model=UploadStatusOut)
+async def get_upload_status(
+    upload_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    job = await db.get(OcrJob, upload_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return UploadStatusOut(
+        upload_id=job.upload_id,
+        status=job.status,
+        attempt_count=job.attempt_count,
+        transaction_record_id=job.transaction_record_id,
+    )
 
 
 @router.get("/", response_model=list[DocumentOut])

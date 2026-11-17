@@ -35,6 +35,7 @@ Examples:
 
 Return exactly these JSON fields:
 - transaction_date: date and time shown for the transaction, as ISO 8601 with timezone offset (WIB is +07:00); if only a date is present, use local midnight; null if unavailable
+- transaction_id: bank transfer/reference ID exactly as printed; null if unavailable
 - description: concise receipt description; empty string if unavailable
 - category: exactly one category listed above
 - transaction_type: exactly "EXPENSES"

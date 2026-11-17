@@ -1,8 +1,9 @@
 import re
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import accounts_table
 from app.schemas import AnalysisResult
 
 
@@ -17,6 +18,30 @@ async def beneficiary_is_account(
     account_number = _normalize(result.beneficiary_account_number)
     bank_name = _normalize(result.beneficiary_bank)
     account_name = _normalize(result.benecifiacry_account_name)
+
+    if db.get_bind().dialect.name == "sqlite":
+        rows = (
+            await db.execute(
+                select(
+                    accounts_table.c.account_number,
+                    accounts_table.c.account_name,
+                    accounts_table.c.bank_name,
+                )
+            )
+        ).all()
+        if account_number:
+            return any(
+                _normalize(row.account_number) == account_number
+                and (not bank_name or _normalize(row.bank_name) == bank_name)
+                for row in rows
+            )
+        if bank_name and account_name:
+            return any(
+                _normalize(row.bank_name) == bank_name
+                and _normalize(row.account_name) == account_name
+                for row in rows
+            )
+        return False
 
     if account_number:
         query = """
