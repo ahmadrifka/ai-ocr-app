@@ -3,8 +3,10 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+
+TransactionType = Literal["EXPENSES", "INCOMING", "TRANSFER"]
 
 ExpenseCategory = Literal[
     "Bahan Baku",
@@ -30,7 +32,8 @@ class DocumentOut(BaseModel):
     transaction_id: str | None
     description: str
     category: TransactionCategory
-    transaction_type: Literal["EXPENSES", "INCOMING"]
+    review_flags: list[str]
+    transaction_type: TransactionType
     beneficiary_bank: str | None
     beneficiary_account_number: str | None
     benecifiacry_account_name: str | None
@@ -44,6 +47,9 @@ class DocumentOut(BaseModel):
 
 
 class AnalysisResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_receipt: StrictBool
     transaction_date: dt.datetime | None = None
     transaction_id: str | None = None
     description: str
@@ -55,7 +61,41 @@ class AnalysisResult(BaseModel):
     source_bank: str | None = None
     source_account_number: str | None = None
     source_account_name: str | None = None
-    amount: Decimal | None = None
+    amount: Decimal | None = Field(default=None, ge=0)
+
+
+class TransactionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transaction_date: dt.datetime | None = None
+    transaction_id: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=10000)
+    category: TransactionCategory | None = None
+    transaction_type: TransactionType | None = None
+    beneficiary_bank: str | None = Field(default=None, max_length=255)
+    beneficiary_account_number: str | None = Field(default=None, max_length=100)
+    benecifiacry_account_name: str | None = Field(default=None, max_length=255)
+    source_bank: str | None = Field(default=None, max_length=255)
+    source_account_number: str | None = Field(default=None, max_length=100)
+    source_account_name: str | None = Field(default=None, max_length=255)
+    amount: Decimal | None = Field(default=None, ge=0)
+
+
+class AccountOut(BaseModel):
+    account_number: str | None
+    account_name: str | None
+    bank_name: str | None
+
+
+class AccountUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_account_number: str | None
+    current_account_name: str | None
+    current_bank_name: str | None
+    account_number: str = Field(min_length=1, max_length=100)
+    account_name: str = Field(min_length=1, max_length=255)
+    bank_name: str = Field(min_length=1, max_length=255)
 
 
 class UploadAccepted(BaseModel):
@@ -68,4 +108,19 @@ class UploadStatusOut(BaseModel):
     upload_id: UUID
     status: str
     attempt_count: int
+    ai_analysis_duration_ms: int | None
     transaction_record_id: int | None
+    last_error: str | None
+
+
+class UploadJobOut(BaseModel):
+    upload_id: UUID
+    status: Literal["PENDING", "PROCESSING", "COMPLETED", "DUPLICATE", "FAILED"]
+    attempt_count: int
+    ai_analysis_duration_ms: int | None
+    content_type: str
+    created_at: dt.datetime
+    transaction_record_id: int | None
+    last_error: str | None
+
+    model_config = ConfigDict(from_attributes=True)

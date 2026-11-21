@@ -1,18 +1,86 @@
+import mimetypes
 import uuid
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Response, UploadFile
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import OcrJob, Transaction
-from app.schemas import DocumentOut, UploadAccepted, UploadStatusOut
+from app.models import OcrJob, Transaction, accounts_table
+from app.schemas import (
+    AccountOut,
+    AccountUpdate,
+    DocumentOut,
+    TransactionUpdate,
+    UploadAccepted,
+    UploadJobOut,
+    UploadStatusOut,
+)
+from app.services.dedupe import IMAGE_DEDUPE_KEY_PREFIX, transaction_dedupe_key
+from app.services.filestore import resolve_file
+from app.services.ocr_guardrails import review_flags
 from app.services.uploads import create_upload_job
 
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+accounts_router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
-ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/tiff"}
+ALLOWED_MIME = {"image/jpeg", "image/webp", "image/gif", "image/tiff"}
+
+
+@accounts_router.get("", response_model=list[AccountOut])
+async def list_accounts(db: AsyncSession = Depends(get_db)):
+    rows = await db.execute(
+        select(
+            accounts_table.c.account_number,
+            accounts_table.c.account_name,
+            accounts_table.c.bank_name,
+        ).order_by(accounts_table.c.bank_name, accounts_table.c.account_name)
+    )
+    return [dict(row) for row in rows.mappings().all()]
+
+
+@accounts_router.patch("", response_model=AccountOut)
+async def update_account(payload: AccountUpdate, db: AsyncSession = Depends(get_db)):
+    current = (
+        payload.current_account_number,
+        payload.current_account_name,
+        payload.current_bank_name,
+    )
+    columns = (
+        accounts_table.c.account_number,
+        accounts_table.c.account_name,
+        accounts_table.c.bank_name,
+    )
+    conditions = [column.is_not_distinct_from(value) for column, value in zip(columns, current)]
+    matches = (
+        await db.execute(select(*columns).where(*conditions).with_for_update())
+    ).mappings().all()
+    if not matches:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if len(matches) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Account identity is ambiguous; account rows need unique identifiers to edit safely",
+        )
+
+    new_values = {
+        "account_number": payload.account_number.strip(),
+        "account_name": payload.account_name.strip(),
+        "bank_name": payload.bank_name.strip(),
+    }
+    if not all(new_values.values()):
+        raise HTTPException(status_code=422, detail="Account fields cannot be blank")
+    result = await db.execute(update(accounts_table).where(*conditions).values(**new_values))
+    if getattr(result, "rowcount", None) != 1:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Account changed while you were editing; refresh and retry"
+        )
+    await db.commit()
+    return new_values
 
 
 @router.post("/upload", response_model=UploadAccepted, status_code=202)
@@ -67,14 +135,57 @@ async def get_upload_status(
         upload_id=job.upload_id,
         status=job.status,
         attempt_count=job.attempt_count,
+        ai_analysis_duration_ms=job.ai_analysis_duration_ms,
         transaction_record_id=job.transaction_record_id,
+        last_error=job.last_error,
+    )
+
+
+@router.get("/uploads", response_model=list[UploadJobOut])
+async def list_uploads(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """List recent OCR jobs for the local dashboard."""
+    stmt = (
+        select(OcrJob)
+        .order_by(OcrJob.created_at.desc(), OcrJob.upload_id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    rows = await db.scalars(stmt)
+    return rows.all()
+
+
+@router.get("/uploads/{upload_id}/image")
+async def get_upload_image(upload_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Serve the image attached to an OCR upload job, if it still exists."""
+    job = await db.get(OcrJob, upload_id)
+    if job is None or not job.asset_path:
+        raise HTTPException(status_code=404, detail="Upload image not found")
+
+    try:
+        file_path = resolve_file(job.asset_path)
+        if not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Upload image not found")
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=404, detail="Upload image not found") from None
+
+    media_type = job.content_type if job.content_type in ALLOWED_MIME else "application/octet-stream"
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=file_path.name,
+        content_disposition_type="inline",
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 
 @router.get("/", response_model=list[DocumentOut])
 async def list_documents(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=50),
     category: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -87,6 +198,52 @@ async def list_documents(
     return rows.scalars().all()
 
 
+@router.patch("/{document_id}", response_model=DocumentOut)
+async def update_document(
+    document_id: int,
+    payload: TransactionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    document = await db.get(Transaction, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail="At least one transaction field is required")
+    for required_field in ("description", "category", "transaction_type"):
+        if required_field in changes and changes[required_field] is None:
+            raise HTTPException(status_code=422, detail=f"{required_field} cannot be null")
+
+    for field, value in changes.items():
+        setattr(document, field, value)
+    if "description" in changes:
+        document.review_flags = review_flags(document.description)
+    if {"source_bank", "transaction_id", "amount", "transaction_date"} & changes.keys():
+        updated_dedupe_key = transaction_dedupe_key(
+            document.source_bank,
+            document.transaction_id,
+            document.amount,
+            document.transaction_date,
+        )
+        preserves_image_key = (
+            updated_dedupe_key is None
+            and (document.dedupe_key or "").startswith(IMAGE_DEDUPE_KEY_PREFIX)
+        )
+        if not preserves_image_key:
+            document.dedupe_key = updated_dedupe_key
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="This edit conflicts with an existing transaction"
+        ) from None
+    await db.refresh(document)
+    return document
+
+
 @router.get("/{document_id}", response_model=DocumentOut)
 async def get_document(document_id: int, db: AsyncSession = Depends(get_db)):
     """Get a single transaction by ID."""
@@ -94,3 +251,27 @@ async def get_document(document_id: int, db: AsyncSession = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return doc
+
+
+@router.get("/{document_id}/receipt")
+async def get_document_receipt(document_id: int, db: AsyncSession = Depends(get_db)):
+    """Serve the receipt image attached to a transaction, if it still exists."""
+    doc = await db.get(Transaction, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    try:
+        file_path = resolve_file(doc.asset_path)
+        if not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Receipt image not found")
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=404, detail="Receipt image not found") from None
+
+    media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=file_path.name,
+        content_disposition_type="inline",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )

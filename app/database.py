@@ -15,7 +15,9 @@ def _make_async_database_url(database_url: str) -> URL:
     return url
 
 
-engine = create_async_engine(_make_async_database_url(DATABASE_URL), echo=False)
+engine = create_async_engine(
+    _make_async_database_url(DATABASE_URL), echo=False, pool_pre_ping=True
+)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 

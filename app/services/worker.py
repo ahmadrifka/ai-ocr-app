@@ -4,6 +4,7 @@ import asyncio
 import datetime as dt
 import logging
 from pathlib import Path
+from time import perf_counter
 import uuid
 from typing import Awaitable, Callable
 
@@ -14,14 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.database import async_session, engine
 from app.models import OcrJob, Transaction
 from app.schemas import AnalysisResult
-from app.services.accounts import beneficiary_is_account
-from app.services.dedupe import transaction_dedupe_key
+from app.services.accounts import beneficiary_is_account, source_is_account
+from app.services.dedupe import image_dedupe_key, transaction_dedupe_key
 from app.services.filestore import delete_file, resolve_file
 from app.services.llm import analyze_image
+from app.services.ocr_guardrails import review_flags
 
 
 logger = logging.getLogger(__name__)
 MAX_OCR_ATTEMPTS = 5
+LEGACY_IMAGE_DEDUPE_SCAN_LIMIT = 100
 POLL_INTERVAL_SECONDS = 1
 JOB_LEASE_SECONDS = 300
 OCR_TIMEOUT_SECONDS = 240
@@ -69,6 +72,8 @@ async def _save_failure(
     sessions: async_sessionmaker[AsyncSession],
     upload_id,
     error: Exception,
+    *,
+    ai_analysis_duration_ms: int | None = None,
 ) -> None:
     async with sessions() as session:
         async with session.begin():
@@ -77,6 +82,8 @@ async def _save_failure(
                 return
             job.lease_until = None
             job.last_error = type(error).__name__
+            if ai_analysis_duration_ms is not None:
+                job.ai_analysis_duration_ms = ai_analysis_duration_ms
             if job.attempt_count >= MAX_OCR_ATTEMPTS:
                 job.status = "FAILED"
             else:
@@ -89,7 +96,7 @@ async def _save_failure(
 
 async def _mark_duplicate(
     sessions: async_sessionmaker[AsyncSession], upload_id, dedupe_key: str
-) -> bool:
+) -> tuple[str | None, str | None] | None:
     async with sessions() as session:
         async with session.begin():
             existing = await session.scalar(
@@ -97,12 +104,28 @@ async def _mark_duplicate(
             )
             job = await session.get(OcrJob, upload_id)
             if existing is None or job is None:
-                return False
+                return None
+            uploaded_asset_path = job.asset_path
+            matched_asset_path = existing.asset_path
             job.status = "DUPLICATE"
             job.transaction_record_id = existing.id
+            job.asset_path = matched_asset_path
             job.lease_until = None
             job.last_error = None
-    return True
+    return uploaded_asset_path, matched_asset_path
+
+
+async def _delete_duplicate_upload_asset(
+    upload_id: uuid.UUID,
+    uploaded_asset_path: str | None,
+    matched_asset_path: str | None,
+) -> None:
+    if not uploaded_asset_path or uploaded_asset_path == matched_asset_path:
+        return
+    try:
+        await delete_file(uploaded_asset_path)
+    except (OSError, ValueError):
+        logger.warning("Could not clean duplicate upload %s", upload_id)
 
 
 async def _cleanup_duplicate_assets(
@@ -119,9 +142,21 @@ async def _cleanup_duplicate_assets(
                 )
             ).all()
         )
+        asset_paths = {job.asset_path for job in jobs if job.asset_path}
+        referenced_paths = set()
+        if asset_paths:
+            referenced_paths = set(
+                (
+                    await session.scalars(
+                        select(Transaction.asset_path).where(
+                            Transaction.asset_path.in_(asset_paths)
+                        )
+                    )
+                ).all()
+            )
     cleaned_any = False
     for job in jobs:
-        if not job.asset_path:
+        if not job.asset_path or job.asset_path in referenced_paths:
             continue
         try:
             await delete_file(job.asset_path)
@@ -131,7 +166,11 @@ async def _cleanup_duplicate_assets(
         async with sessions() as session:
             async with session.begin():
                 current = await session.get(OcrJob, job.upload_id)
-                if current is not None and current.status == "DUPLICATE":
+                if (
+                    current is not None
+                    and current.status == "DUPLICATE"
+                    and current.asset_path == job.asset_path
+                ):
                     current.asset_path = None
         cleaned_any = True
     return cleaned_any
@@ -140,6 +179,40 @@ async def _cleanup_duplicate_assets(
 def _is_dedupe_conflict(error: IntegrityError) -> bool:
     message = str(error.orig).lower()
     return "transaction_dedupe_key_uq" in message or "transaction.dedupe_key" in message
+
+
+async def _find_legacy_image_duplicate_id(
+    sessions: async_sessionmaker[AsyncSession],
+    analysis: AnalysisResult,
+    image_key: str,
+) -> int | None:
+    if analysis.amount is None or analysis.transaction_date is None:
+        return None
+
+    stmt = (
+        select(Transaction.id, Transaction.asset_path)
+        .where(
+            Transaction.dedupe_key.is_(None),
+            Transaction.amount == analysis.amount,
+            Transaction.transaction_date == analysis.transaction_date,
+        )
+        .order_by(Transaction.id.desc())
+        .limit(LEGACY_IMAGE_DEDUPE_SCAN_LIMIT)
+    )
+    async with sessions() as session:
+        candidates = (await session.execute(stmt)).all()
+
+    for transaction_id, asset_path in candidates:
+        if not asset_path:
+            continue
+        try:
+            candidate_path = resolve_file(asset_path)
+            candidate_bytes = await asyncio.to_thread(candidate_path.read_bytes)
+        except (OSError, ValueError):
+            continue
+        if image_dedupe_key(candidate_bytes) == image_key:
+            return transaction_id
+    return None
 
 
 async def process_next_job(
@@ -155,20 +228,46 @@ async def process_next_job(
 
     upload_id, asset_path, content_type = claimed
     dedupe_key = None
+    legacy_image_duplicate_id = None
+    matched_asset_path = None
+    ai_analysis_duration_ms = None
     try:
         image_path: Path = resolve_file(asset_path)
         image_bytes = await asyncio.to_thread(image_path.read_bytes)
-        analysis = await asyncio.wait_for(
-            analyzer(image_bytes, content_type), timeout=OCR_TIMEOUT_SECONDS
-        )
+        analysis_started_at = perf_counter()
+        try:
+            analysis = await asyncio.wait_for(
+                analyzer(image_bytes, content_type), timeout=OCR_TIMEOUT_SECONDS
+            )
+        finally:
+            ai_analysis_duration_ms = round(
+                (perf_counter() - analysis_started_at) * 1000
+            )
         if not isinstance(analysis, AnalysisResult):
             analysis = AnalysisResult.model_validate(analysis)
+        if not analysis.is_receipt:
+            async with sessions() as session:
+                async with session.begin():
+                    job = await session.get(OcrJob, upload_id)
+                    if job is None or job.status != "PROCESSING":
+                        return True
+                    job.status = "FAILED"
+                    job.lease_until = None
+                    job.last_error = "not_a_receipt"
+                    job.ai_analysis_duration_ms = ai_analysis_duration_ms
+            return True
+
         dedupe_key = transaction_dedupe_key(
             analysis.source_bank,
             analysis.transaction_id,
             analysis.amount,
             analysis.transaction_date,
         )
+        if dedupe_key is None:
+            dedupe_key = image_dedupe_key(image_bytes)
+            legacy_image_duplicate_id = await _find_legacy_image_duplicate_id(
+                sessions, analysis, dedupe_key
+            )
 
         duplicate = False
         async with sessions() as session:
@@ -176,27 +275,45 @@ async def process_next_job(
                 current_job = await session.get(OcrJob, upload_id)
                 if current_job is None or current_job.status != "PROCESSING":
                     return True
+                current_job.ai_analysis_duration_ms = ai_analysis_duration_ms
                 if dedupe_key:
                     existing = await session.scalar(
                         select(Transaction).where(Transaction.dedupe_key == dedupe_key)
                     )
                 else:
                     existing = None
+                if existing is None and legacy_image_duplicate_id is not None:
+                    existing = await session.get(Transaction, legacy_image_duplicate_id)
                 if existing is not None:
+                    if legacy_image_duplicate_id is not None and existing.dedupe_key is None:
+                        existing.dedupe_key = dedupe_key
+                    matched_asset_path = existing.asset_path
+                    current_job.asset_path = matched_asset_path
                     current_job.status = "DUPLICATE"
                     current_job.transaction_record_id = existing.id
                     current_job.lease_until = None
                     current_job.last_error = None
                     duplicate = True
                 else:
-                    incoming = await beneficiary_is_account(session, analysis)
+                    # OCR is constrained to EXPENSES; account matches set direction types.
+                    source_account_is_ours = await source_is_account(session, analysis)
+                    beneficiary_account_is_ours = await beneficiary_is_account(
+                        session, analysis
+                    )
+                    is_transfer = source_account_is_ours and beneficiary_account_is_ours
+                    incoming = beneficiary_account_is_ours and not is_transfer
                     transaction = Transaction(
                         transaction_date=analysis.transaction_date,
                         transaction_id=analysis.transaction_id,
                         dedupe_key=dedupe_key,
                         description=analysis.description,
+                        review_flags=review_flags(analysis.description),
                         category="sale" if incoming else analysis.category,
-                        transaction_type="INCOMING" if incoming else analysis.transaction_type,
+                        transaction_type=(
+                            "TRANSFER"
+                            if is_transfer
+                            else "INCOMING" if incoming else analysis.transaction_type
+                        ),
                         beneficiary_bank=analysis.beneficiary_bank,
                         beneficiary_account_number=analysis.beneficiary_account_number,
                         benecifiacry_account_name=analysis.benecifiacry_account_name,
@@ -214,17 +331,31 @@ async def process_next_job(
                     current_job.last_error = None
 
         if duplicate:
+            await _delete_duplicate_upload_asset(
+                upload_id, asset_path, matched_asset_path
+            )
             await _cleanup_duplicate_assets(sessions)
         return True
     except IntegrityError as exc:
         if dedupe_key and _is_dedupe_conflict(exc):
-            if await _mark_duplicate(sessions, upload_id, dedupe_key):
+            duplicate_paths = await _mark_duplicate(sessions, upload_id, dedupe_key)
+            if duplicate_paths is not None:
+                uploaded_asset_path, matched_asset_path = duplicate_paths
+                await _delete_duplicate_upload_asset(
+                    upload_id, uploaded_asset_path, matched_asset_path
+                )
                 await _cleanup_duplicate_assets(sessions)
                 return True
-        await _save_failure(sessions, upload_id, exc)
+        await _save_failure(
+            sessions, upload_id, exc,
+            ai_analysis_duration_ms=ai_analysis_duration_ms,
+        )
         return True
     except Exception as exc:
-        await _save_failure(sessions, upload_id, exc)
+        await _save_failure(
+            sessions, upload_id, exc,
+            ai_analysis_duration_ms=ai_analysis_duration_ms,
+        )
         return True
 
 

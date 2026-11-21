@@ -1,4 +1,4 @@
-"""Stable keys for matching duplicate bank transactions."""
+"""Stable keys for bank transactions and byte-identical upload images."""
 
 import datetime as dt
 from decimal import Decimal, ROUND_HALF_UP
@@ -42,3 +42,12 @@ def transaction_dedupe_key(
         separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+IMAGE_DEDUPE_KEY_PREFIX = "i"
+
+
+def image_dedupe_key(image_bytes: bytes) -> str:
+    """Return a namespaced key for byte-identical uploads."""
+    digest = hashlib.sha256(b"ocr-image-v1\0" + image_bytes).hexdigest()
+    return f"{IMAGE_DEDUPE_KEY_PREFIX}{digest[:63]}"

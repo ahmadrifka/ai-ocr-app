@@ -2,7 +2,7 @@ import datetime as dt
 from decimal import Decimal
 import uuid
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, Numeric, String, Table, Text, Uuid, func
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Table, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -33,6 +33,7 @@ class Transaction(Base):
     transaction_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     dedupe_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    review_flags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     category: Mapped[str] = mapped_column(String(100), nullable=False, default="Uncategorized")
     transaction_type: Mapped[str] = mapped_column(
         String(100), nullable=False, default="EXPENSES"
@@ -66,6 +67,7 @@ class OcrJob(Base):
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ai_analysis_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     available_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -11,13 +11,15 @@ def _normalize(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]", "", (value or "").casefold())
 
 
-async def beneficiary_is_account(
-    db: AsyncSession, result: AnalysisResult
+async def _account_matches(
+    db: AsyncSession,
+    account_number_value: str | None,
+    bank_name_value: str | None,
+    account_name_value: str | None,
 ) -> bool:
-    """Return whether the OCR beneficiary matches one of our public.accounts rows."""
-    account_number = _normalize(result.beneficiary_account_number)
-    bank_name = _normalize(result.beneficiary_bank)
-    account_name = _normalize(result.benecifiacry_account_name)
+    account_number = _normalize(account_number_value)
+    bank_name = _normalize(bank_name_value)
+    account_name = _normalize(account_name_value)
 
     if db.get_bind().dialect.name == "sqlite":
         rows = (
@@ -76,3 +78,25 @@ async def beneficiary_is_account(
 
     result_set = await db.execute(text(query), params)
     return bool(result_set.scalar_one())
+
+
+async def beneficiary_is_account(
+    db: AsyncSession, result: AnalysisResult
+) -> bool:
+    """Return whether the OCR beneficiary matches one of our public.accounts rows."""
+    return await _account_matches(
+        db,
+        result.beneficiary_account_number,
+        result.beneficiary_bank,
+        result.benecifiacry_account_name,
+    )
+
+
+async def source_is_account(db: AsyncSession, result: AnalysisResult) -> bool:
+    """Return whether the OCR source matches one of our public.accounts rows."""
+    return await _account_matches(
+        db,
+        result.source_account_number,
+        result.source_bank,
+        result.source_account_name,
+    )
