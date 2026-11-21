@@ -391,7 +391,7 @@ function openJobDetails(uploadId, trigger) {
   const matchNote = byId("job-receipt-match");
   matchNote.hidden = !isDuplicateMatch;
   matchNote.textContent = isDuplicateMatch
-    ? `Duplicate match: showing the saved image from transaction #${job.transaction_record_id}.`
+    ? `Duplicate match: transaction #${job.transaction_record_id}.`
     : "";
   image.alt = isDuplicateMatch
     ? `Matched image from transaction ${job.transaction_record_id} for duplicate upload ${String(job.upload_id).slice(0, 8)}`
