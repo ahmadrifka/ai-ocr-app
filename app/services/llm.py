@@ -87,8 +87,13 @@ async def _analyze_with_google_genai(image_bytes: bytes, mime_type: str) -> Anal
     finally:
         try:
             await async_client.aclose()
+        except Exception:
+            pass
         finally:
-            client.close()
+            try:
+                client.close()
+            except Exception:
+                pass
 
     return _parse_analysis_response(response.text or "{}")
 

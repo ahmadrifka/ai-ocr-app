@@ -10,6 +10,7 @@ FastAPI service that uses a configurable LLM provider to read images, extract te
 - **Deduplicate** transactions by normalized source bank, bank transaction ID, amount, and transaction date
 - **Store** images under `filestore/YYYY/MM/DD/<upload_id>.<ext>`
 - **Review** upload processing and saved transactions in the local Receipt Desk dashboard
+- **Telegram Bot** (`bot/`): capture receipts via chat/photo, trigger async OCR ingestion, and deliver structured transaction confirmation
 
 Completed transactions are stored in `public."transaction"`; upload processing state is stored in `public.ocr_upload_job`. Transactions use a normalized bank/reference key when source bank, transaction ID, amount, and date are available. If that key cannot be built, the worker uses a namespaced SHA-256 fingerprint of the uploaded image, so byte-identical files are deduplicated while different images with the same OCR amount/date remain separate. For older unkeyed transactions, the worker compares stored image bytes among up to 100 most recent rows with matching OCR amount and date, then stores the fingerprint on a matched legacy transaction for subsequent lookups. Re-encoded or recompressed versions are not considered byte-identical. Duplicate jobs point to the matched transaction's existing image path so the dashboard can show which image matched; the redundant uploaded file is removed, and cleanup preserves any image still referenced by a transaction. Temporary OCR failures are retried up to five attempts; failed jobs retain their image for review.
 
@@ -36,14 +37,30 @@ cp .env.example .env
 # Configure DATABASE_URL with your Supabase direct PostgreSQL connection URL.
 # The app uses asyncpg and translates `sslmode=require` to its SSL setting.
 # For another OpenAI-compatible provider, set its API base URL, model and key.
+# Configure TELEGRAM_BOT_TOKEN for the Telegram bot interface.
 
 # Run the API and worker in separate terminals
 uvicorn app.main:app --reload
-# In another terminal:
+# In another terminal (worker daemon):
 python -m app.services.worker
+# In another terminal (Telegram bot):
+python -m bot.main
 ```
 
 Open the local dashboard at `http://127.0.0.1:8765/dashboard/` when the API is running. The dashboard's upload form enqueues supported images; the separate worker must be running to process them.
+
+## Telegram Bot
+
+The `bot/` directory contains the Telegram integration daemon built on `python-telegram-bot`:
+- `/start`: Greeting and overview
+- `/help`: Upload guidelines, supported formats, and troubleshooting tips
+- `/status`: Health check against the FastAPI OCR API
+- Receipt Upload (Photo / Document): Ingests images, converts format when necessary, pushes to `/api/documents/upload`, polls completion, and displays transaction summaries with deduplication alerts
+
+Run the bot with:
+```bash
+python -m bot.main
+```
 
 ## API
 
