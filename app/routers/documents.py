@@ -211,7 +211,7 @@ async def update_document(
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="At least one transaction field is required")
-    for required_field in ("description", "category", "transaction_type"):
+    for required_field in ("description", "category", "sub_category", "transaction_type"):
         if required_field in changes and changes[required_field] is None:
             raise HTTPException(status_code=422, detail=f"{required_field} cannot be null")
 

@@ -308,7 +308,8 @@ async def process_next_job(
                         dedupe_key=dedupe_key,
                         description=analysis.description,
                         review_flags=review_flags(analysis.description),
-                        category="sale" if incoming else analysis.category,
+                        category="Penjualan" if incoming else analysis.category,
+                        sub_category="Penjualan Produk" if incoming else analysis.sub_category,
                         transaction_type=(
                             "TRANSFER"
                             if is_transfer

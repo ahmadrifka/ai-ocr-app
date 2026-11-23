@@ -31,6 +31,7 @@ def format_transaction_success(doc: dict[str, Any]) -> str:
             date_str = date_str.split("+")[0]
 
     category = doc.get("category") or "Uncategorized"
+    sub_category = doc.get("sub_category") or "Uncategorized"
     description = doc.get("description") or "-"
     tx_type = doc.get("transaction_type") or "EXPENSES"
     tx_id = doc.get("transaction_id") or "Tidak tertera"
@@ -49,6 +50,7 @@ def format_transaction_success(doc: dict[str, Any]) -> str:
         "✅ <b>Struk Berhasil Diekstrak & Dicatat!</b>\n\n"
         f"💰 <b>Nominal:</b> {amount_str}\n"
         f"🏷️ <b>Kategori:</b> {category}\n"
+        f"🏷️ <b>Sub Kategori:</b> {sub_category}\n"
         f"📝 <b>Keterangan:</b> {description}\n"
         f"📅 <b>Waktu Transaksi:</b> {date_str}\n"
         f"🔢 <b>No. Referensi / ID:</b> {tx_id}\n"
@@ -71,6 +73,7 @@ def format_duplicate_notice(doc: dict[str, Any]) -> str:
         f"• <b>ID Database:</b> #{doc.get('id', '-')}\n"
         f"• <b>Nominal:</b> {amount_str}\n"
         f"• <b>Kategori:</b> {doc.get('category') or '-'}\n"
+        f"• <b>Sub Kategori:</b> {doc.get('sub_category') or '-'}\n"
         f"• <b>Tanggal:</b> {date_str}\n"
     )
 

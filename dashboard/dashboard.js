@@ -222,6 +222,7 @@ function renderTransactions() {
 
     row.append(cell(transaction.source_bank || transaction.beneficiary_bank));
     row.append(cell(transaction.category, "category-cell"));
+    row.append(cell(transaction.sub_category, "category-cell"));
     row.append(transactionTypeCell(transaction.transaction_type));
     row.append(cell(formatAmount(transaction.amount), "amount-cell"));
 
@@ -461,6 +462,7 @@ async function openTransactionDetails(transactionId, trigger) {
     addDetailItem("Type", transaction.transaction_type);
     addDetailItem("Transaction date", formatDate(transaction.transaction_date));
     addDetailItem("Category", transaction.category);
+    addDetailItem("Sub Category", transaction.sub_category);
     addDetailItem("Amount", formatAmount(transaction.amount), "detail-item--amount");
     addDetailItem("Description", transaction.description, "detail-item--wide");
     addDetailItem("Source bank", transaction.source_bank);
@@ -589,7 +591,7 @@ byId("transaction-edit-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const submit = form.querySelector('[type="submit"]');
   const nullableFields = [
-    "transaction_date", "transaction_id", "source_bank", "source_account_number",
+    "transaction_date", "transaction_id", "sub_category", "source_bank", "source_account_number",
     "source_account_name", "beneficiary_bank", "beneficiary_account_number",
     "benecifiacry_account_name",
   ];

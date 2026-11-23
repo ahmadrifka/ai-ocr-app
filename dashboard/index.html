@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#eff3f2" />
     <title>Receipt Desk — AI OCR</title>
-    <link rel="stylesheet" href="dashboard.css?v=duplicate-image-source" />
-    <script src="dashboard.js?v=duplicate-image-source-v2" defer></script>
+    <link rel="stylesheet" href="dashboard.css?v=sub-category" />
+    <script src="dashboard.js?v=sub-category" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -129,6 +129,7 @@
                 <th scope="col">Description</th>
                 <th scope="col">Bank</th>
                 <th scope="col">Category</th>
+                <th scope="col">Sub Category</th>
                 <th scope="col">Type</th>
                 <th scope="col" class="amount-heading">Amount</th>
                 <th scope="col">Details</th>
@@ -175,7 +176,8 @@
             <label>Transaction date<input name="transaction_date" placeholder="ISO 8601, e.g. 2026-11-20T09:30:00+07:00" /></label>
             <label>Bank reference<input name="transaction_id" maxlength="255" /></label>
             <label>Description<input name="description" required maxlength="10000" /></label>
-            <label>Category<select name="category"><option>Uncategorized</option><option>Bahan Baku</option><option>Biaya-Gaji Karyawan</option><option>Biaya-Konsumsi</option><option>Biaya-Perlengkapan Kantor dan Administrasi</option><option>Biaya-Transportasi</option><option>Biaya-Ongkir</option><option>Biaya-Perbaikan Bangunan</option><option>Biaya-Operasional</option><option>Biaya-Pembelian Aset</option><option>Biaya-Sosial</option><option value="sale">Sale</option></select></label>
+            <label>Category<select name="category"><option>Uncategorized</option><option>Persediaan</option><option>Penjualan</option><option>Modal dan Prive</option><option>Beban Operasional</option><option>Utang/Piutang</option><option>Aset Tetap/Investasi</option><option>Pendapatan/Beban Lain</option><option>Pajak</option></select></label>
+            <label>Sub Category<select name="sub_category"><option>Uncategorized</option><option>Bahan Baku</option><option>Penjualan Produk</option><option>Modal</option><option>Prive</option><option>Biaya-Gaji Karyawan</option><option>Biaya-Konsumsi</option><option>Biaya-Perlengkapan Kantor dan Administrasi</option><option>Biaya-Transportasi</option><option>Biaya-Ongkir</option><option>Biaya-Perbaikan Bangunan</option><option>Biaya-Operasional</option><option>Biaya-Sosial</option><option>Utang</option><option>Piutang</option><option>Biaya-Pembelian Aset</option><option>Beban Lain</option><option>Pendapatan Lain</option><option>Pembayaran pajak</option></select></label>
             <label>Type<select name="transaction_type"><option value="EXPENSES">Expense</option><option value="INCOMING">Incoming</option><option value="TRANSFER">Transfer</option></select></label>
             <label>Amount<input name="amount" type="number" min="0" step="0.01" /></label>
             <label>Source bank<input name="source_bank" maxlength="255" /></label>

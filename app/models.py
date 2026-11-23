@@ -35,6 +35,7 @@ class Transaction(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     review_flags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     category: Mapped[str] = mapped_column(String(100), nullable=False, default="Uncategorized")
+    sub_category: Mapped[str] = mapped_column(String(100), nullable=False, default="Uncategorized")
     transaction_type: Mapped[str] = mapped_column(
         String(100), nullable=False, default="EXPENSES"
     )

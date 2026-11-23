@@ -8,8 +8,23 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 TransactionType = Literal["EXPENSES", "INCOMING", "TRANSFER"]
 
-ExpenseCategory = Literal[
+Category = Literal[
+    "Persediaan",
+    "Penjualan",
+    "Modal dan Prive",
+    "Beban Operasional",
+    "Utang/Piutang",
+    "Aset Tetap/Investasi",
+    "Pendapatan/Beban Lain",
+    "Pajak",
+    "Uncategorized",
+]
+
+SubCategory = Literal[
     "Bahan Baku",
+    "Penjualan Produk",
+    "Modal",
+    "Prive",
     "Biaya-Gaji Karyawan",
     "Biaya-Konsumsi",
     "Biaya-Perlengkapan Kantor dan Administrasi",
@@ -17,11 +32,15 @@ ExpenseCategory = Literal[
     "Biaya-Ongkir",
     "Biaya-Perbaikan Bangunan",
     "Biaya-Operasional",
-    "Biaya-Pembelian Aset",
     "Biaya-Sosial",
+    "Utang",
+    "Piutang",
+    "Biaya-Pembelian Aset",
+    "Beban Lain",
+    "Pendapatan Lain",
+    "Pembayaran pajak",
     "Uncategorized",
 ]
-TransactionCategory = ExpenseCategory | Literal["sale"]
 
 
 class DocumentOut(BaseModel):
@@ -31,7 +50,8 @@ class DocumentOut(BaseModel):
     transaction_date: dt.datetime | None
     transaction_id: str | None
     description: str
-    category: TransactionCategory
+    category: Category
+    sub_category: SubCategory
     review_flags: list[str]
     transaction_type: TransactionType
     beneficiary_bank: str | None
@@ -53,7 +73,8 @@ class AnalysisResult(BaseModel):
     transaction_date: dt.datetime | None = None
     transaction_id: str | None = None
     description: str
-    category: ExpenseCategory
+    category: Category
+    sub_category: SubCategory
     transaction_type: Literal["EXPENSES"]
     beneficiary_bank: str | None = None
     beneficiary_account_number: str | None = None
@@ -70,7 +91,8 @@ class TransactionUpdate(BaseModel):
     transaction_date: dt.datetime | None = None
     transaction_id: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=10000)
-    category: TransactionCategory | None = None
+    category: Category | None = None
+    sub_category: SubCategory | None = None
     transaction_type: TransactionType | None = None
     beneficiary_bank: str | None = Field(default=None, max_length=255)
     beneficiary_account_number: str | None = Field(default=None, max_length=100)
