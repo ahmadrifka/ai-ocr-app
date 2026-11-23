@@ -87,7 +87,9 @@ class LlmProviderTests(unittest.IsolatedAsyncioTestCase):
         self.openai_client.chat.completions.create.assert_awaited_once()
 
     async def test_google_sdk_receives_image_and_returns_structured_result(self):
-        response = SimpleNamespace(text=self.expected.model_dump_json())
+        response = SimpleNamespace(
+            text=self.expected.model_dump_json(), usage_metadata=None
+        )
         generate_content = AsyncMock(return_value=response)
         async_client = SimpleNamespace(
             models=SimpleNamespace(generate_content=generate_content),

@@ -2,7 +2,8 @@
 
 import base64
 import json
-from openai import AsyncOpenAI
+from langfuse import get_client, observe
+from langfuse.openai import AsyncOpenAI
 
 from app.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_PROVIDER
 from app.schemas import AnalysisResult
@@ -72,6 +73,7 @@ def _parse_analysis_response(raw: str) -> AnalysisResult:
     return AnalysisResult(**json.loads(raw))
 
 
+@observe(name="google-genai", as_type="generation", capture_input=False)
 async def _analyze_with_google_genai(image_bytes: bytes, mime_type: str) -> AnalysisResult:
     from google import genai
     from google.genai import types
@@ -102,6 +104,15 @@ async def _analyze_with_google_genai(image_bytes: bytes, mime_type: str) -> Anal
             except Exception:
                 pass
 
+    usage = response.usage_metadata
+    get_client().update_current_generation(
+        model=LLM_MODEL,
+        output=response.text,
+        usage_details={
+            "input": usage.prompt_token_count or 0,
+            "output": usage.candidates_token_count or 0,
+        } if usage else None,
+    )
     return _parse_analysis_response(response.text or "{}")
 
 
