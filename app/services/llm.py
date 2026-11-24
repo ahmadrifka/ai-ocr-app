@@ -73,7 +73,7 @@ def _parse_analysis_response(raw: str) -> AnalysisResult:
     return AnalysisResult(**json.loads(raw))
 
 
-@observe(name="google-genai", as_type="generation", capture_input=False)
+@observe(name="google-genai", as_type="generation", capture_input=False, capture_output=False)
 async def _analyze_with_google_genai(image_bytes: bytes, mime_type: str) -> AnalysisResult:
     from google import genai
     from google.genai import types
