@@ -1,8 +1,8 @@
 import mimetypes
+from pathlib import PurePosixPath
 import uuid
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Response, UploadFile
-from fastapi.responses import FileResponse
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,7 @@ from app.schemas import (
     UploadStatusOut,
 )
 from app.services.dedupe import IMAGE_DEDUPE_KEY_PREFIX, transaction_dedupe_key
-from app.services.filestore import resolve_file
+from app.services.filestore import read_file
 from app.services.ocr_guardrails import review_flags
 from app.services.uploads import create_upload_job
 
@@ -166,20 +166,12 @@ async def get_upload_image(upload_id: uuid.UUID, db: AsyncSession = Depends(get_
         raise HTTPException(status_code=404, detail="Upload image not found")
 
     try:
-        file_path = resolve_file(job.asset_path)
-        if not file_path.is_file():
-            raise HTTPException(status_code=404, detail="Upload image not found")
-    except (OSError, RuntimeError, ValueError):
+        content = await read_file(job.asset_path)
+    except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="Upload image not found") from None
 
     media_type = job.content_type if job.content_type in ALLOWED_MIME else "application/octet-stream"
-    return FileResponse(
-        file_path,
-        media_type=media_type,
-        filename=file_path.name,
-        content_disposition_type="inline",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
+    return _inline_image_response(content, job.asset_path, media_type)
 
 
 @router.get("/", response_model=list[DocumentOut])
@@ -259,19 +251,25 @@ async def get_document_receipt(document_id: int, db: AsyncSession = Depends(get_
     doc = await db.get(Transaction, document_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    if not doc.asset_path:
+        raise HTTPException(status_code=404, detail="Receipt image not found")
 
     try:
-        file_path = resolve_file(doc.asset_path)
-        if not file_path.is_file():
-            raise HTTPException(status_code=404, detail="Receipt image not found")
-    except (OSError, RuntimeError, ValueError):
+        content = await read_file(doc.asset_path)
+    except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="Receipt image not found") from None
 
-    media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-    return FileResponse(
-        file_path,
+    media_type = mimetypes.guess_type(doc.asset_path)[0] or "application/octet-stream"
+    return _inline_image_response(content, doc.asset_path, media_type)
+
+
+def _inline_image_response(content: bytes, asset_path: str, media_type: str) -> Response:
+    filename = PurePosixPath(asset_path).name
+    return Response(
+        content=content,
         media_type=media_type,
-        filename=file_path.name,
-        content_disposition_type="inline",
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
     )
