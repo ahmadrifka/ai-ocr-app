@@ -14,6 +14,7 @@ class LlmProviderTests(unittest.IsolatedAsyncioTestCase):
             is_receipt=True,
             description="receipt",
             category="Uncategorized",
+            sub_category="Uncategorized",
             transaction_type="EXPENSES",
         )
         self.openai_response = SimpleNamespace(
