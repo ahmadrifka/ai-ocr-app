@@ -38,6 +38,8 @@ cp .env.example .env
 # The app uses asyncpg and translates `sslmode=require` to its SSL setting.
 # For another OpenAI-compatible provider, set its API base URL, model and key.
 # Configure TELEGRAM_BOT_TOKEN for the Telegram bot interface.
+# Optional: set LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_BASE_URL to trace
+# each OCR call in Langfuse (model, tokens, latency), grouped by upload ID as session.
 
 # Run the API and worker in separate terminals
 uvicorn app.main:app --reload

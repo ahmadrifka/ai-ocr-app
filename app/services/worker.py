@@ -8,6 +8,7 @@ from time import perf_counter
 import uuid
 from typing import Awaitable, Callable
 
+from langfuse import propagate_attributes
 from sqlalchemy import func, select, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -236,9 +237,10 @@ async def process_next_job(
         image_bytes = await asyncio.to_thread(image_path.read_bytes)
         analysis_started_at = perf_counter()
         try:
-            analysis = await asyncio.wait_for(
-                analyzer(image_bytes, content_type), timeout=OCR_TIMEOUT_SECONDS
-            )
+            with propagate_attributes(session_id=str(upload_id), trace_name="ocr-job"):
+                analysis = await asyncio.wait_for(
+                    analyzer(image_bytes, content_type), timeout=OCR_TIMEOUT_SECONDS
+                )
         finally:
             ai_analysis_duration_ms = round(
                 (perf_counter() - analysis_started_at) * 1000
