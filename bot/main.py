@@ -5,6 +5,7 @@ import sys
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     TypeHandler,
@@ -13,6 +14,7 @@ from telegram.ext import (
 
 from bot.config import ALLOWED_TELEGRAM_USER_IDS, TELEGRAM_BOT_TOKEN
 from bot.handlers import (
+    handle_callback_query,
     handle_document,
     handle_photo,
     handle_text,
@@ -51,6 +53,9 @@ def build_bot_app():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # Register callback query handler for inline keyboards
+    app.add_handler(CallbackQueryHandler(handle_callback_query))
 
     return app
 
