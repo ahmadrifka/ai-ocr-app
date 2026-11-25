@@ -53,7 +53,8 @@ class OcrPipelineTests(unittest.IsolatedAsyncioTestCase):
             "transaction_id": "TRX-123",
             "transaction_date": dt.datetime(2026, 11, 17, 9, 30, tzinfo=dt.timezone.utc),
             "description": "Office supplies",
-            "category": "Biaya-Perlengkapan Kantor dan Administrasi",
+            "category": "Beban Operasional",
+            "sub_category": "Biaya-Perlengkapan Kantor dan Administrasi",
             "transaction_type": "EXPENSES",
             "source_bank": "Bank Central Asia",
             "amount": Decimal("125000.00"),
@@ -195,6 +196,9 @@ class OcrPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved_job.status, "COMPLETED")
         self.assertEqual(len(transactions), 1)
         self.assertEqual(transactions[0].transaction_id, "TRX-123")
+        self.assertEqual(
+            transactions[0].sub_category, "Biaya-Perlengkapan Kantor dan Administrasi"
+        )
         self.assertEqual(saved_job.transaction_record_id, transactions[0].id)
         self.assertTrue(image_path.is_file())
 
@@ -228,7 +232,8 @@ class OcrPipelineTests(unittest.IsolatedAsyncioTestCase):
             transaction = await session.scalar(select(Transaction))
         self.assertEqual(saved_job.status, "COMPLETED")
         self.assertEqual(transaction.transaction_type, "INCOMING")
-        self.assertEqual(transaction.category, "sale")
+        self.assertEqual(transaction.category, "Penjualan")
+        self.assertEqual(transaction.sub_category, "Penjualan Produk")
 
     async def test_worker_marks_transfer_when_both_accounts_match_our_list(self):
         job = await self.create_upload("request-transfer")
@@ -262,9 +267,7 @@ class OcrPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(transaction)
         self.assertEqual(saved_job.status, "COMPLETED")
         self.assertEqual(transaction.transaction_type, "TRANSFER")
-        self.assertEqual(
-            transaction.category, "Biaya-Perlengkapan Kantor dan Administrasi"
-        )
+        self.assertEqual(transaction.category, "Beban Operasional")
 
     async def test_source_account_match_alone_does_not_mark_transfer(self):
         job = await self.create_upload("request-source-only")
@@ -295,9 +298,7 @@ class OcrPipelineTests(unittest.IsolatedAsyncioTestCase):
         if transaction is None:
             self.fail("worker did not save a transaction")
         self.assertEqual(transaction.transaction_type, "EXPENSES")
-        self.assertEqual(
-            transaction.category, "Biaya-Perlengkapan Kantor dan Administrasi"
-        )
+        self.assertEqual(transaction.category, "Beban Operasional")
 
     async def test_duplicate_transaction_deletes_new_image_and_keeps_original(self):
         first = await self.create_upload("request-first")
