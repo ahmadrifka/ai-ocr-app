@@ -1,0 +1,19 @@
+# Secrets and local state
+.env
+*.db
+filestore/
+assets/
+
+# Tooling and caches
+.git/
+.venv/
+.claude/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.egg-info/
+supabase/.temp/
+
+# Not needed at runtime
+tests/
+CLAUDE.md

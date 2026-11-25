@@ -64,6 +64,38 @@ Run the bot with:
 python -m bot.main
 ```
 
+## Authentication
+
+Authentication is enforced when `DASHBOARD_PASSWORD` or `API_KEY` is set (always required when `APP_ENV=production`). It protects `/api/*` and the OpenAPI docs; `/health`, the static dashboard files and the Telegram webhook (which checks its own secret) stay public.
+
+- **Dashboard:** open `/dashboard/`, sign in with `DASHBOARD_PASSWORD`. The session cookie is signed with `SESSION_SECRET`.
+- **Machine clients:** send `X-API-Key: <API_KEY>`. The bot uses `OCR_API_KEY`, falling back to `API_KEY`.
+
+## Deploy to Render (free tier)
+
+The free plan allows one web service, so a single container runs the API, dashboard, OCR worker (`RUN_WORKER_IN_API=true`) and the Telegram bot in webhook mode (`TELEGRAM_WEBHOOK_ENABLED=true`). Receipt images go to a private Supabase Storage bucket because the container disk is wiped on every restart.
+
+1. **Supabase**
+   - Apply every migration in `supabase/migrations/`.
+   - Copy the **Session pooler** connection string (Connect → Session pooler, port 5432). The direct host is IPv6-only and the transaction pooler breaks asyncpg prepared statements.
+   - Create a **private** Storage bucket named `receipts`, and copy the project URL and a secret (service role) key.
+2. **Render**
+   - New → Blueprint, select this repository; `render.yaml` defines the service.
+   - Fill in the secret values: `DATABASE_URL`, `LLM_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DASHBOARD_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_IDS` (Langfuse keys are optional).
+   - `SESSION_SECRET` and `API_KEY` are generated automatically.
+3. **Verify**
+   - `GET https://<service>.onrender.com/health` returns `{"status": "ok"}`.
+   - Sign in at `/dashboard/`, upload a receipt and wait for `COMPLETED`.
+   - Send a receipt photo to the bot. On startup the service registers its webhook at `/telegram/webhook`.
+
+A free service sleeps after 15 minutes without traffic; the next request (including a Telegram message) wakes it in roughly a minute. Queued OCR jobs resume once it is awake.
+
+Build and run the container locally:
+```bash
+docker build -t ai-ocr-app .
+docker run --env-file .env -p 8000:8000 ai-ocr-app
+```
+
 ## API
 
 ### `POST /api/documents/upload`

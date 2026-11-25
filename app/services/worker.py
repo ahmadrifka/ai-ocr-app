@@ -1,9 +1,12 @@
-"""PostgreSQL-polled OCR worker; run separately from the FastAPI process."""
+"""PostgreSQL-polled OCR worker.
+
+Runs standalone (`python -m app.services.worker`) or inside the API process when
+RUN_WORKER_IN_API is enabled for single-instance hosting.
+"""
 
 import asyncio
 import datetime as dt
 import logging
-from pathlib import Path
 from time import perf_counter
 import uuid
 from typing import Awaitable, Callable
@@ -18,7 +21,7 @@ from app.models import OcrJob, Transaction
 from app.schemas import AnalysisResult
 from app.services.accounts import beneficiary_is_account, source_is_account
 from app.services.dedupe import image_dedupe_key, transaction_dedupe_key
-from app.services.filestore import delete_file, resolve_file
+from app.services.filestore import delete_file, read_file
 from app.services.llm import analyze_image
 from app.services.ocr_guardrails import review_flags
 
@@ -207,8 +210,7 @@ async def _find_legacy_image_duplicate_id(
         if not asset_path:
             continue
         try:
-            candidate_path = resolve_file(asset_path)
-            candidate_bytes = await asyncio.to_thread(candidate_path.read_bytes)
+            candidate_bytes = await read_file(asset_path)
         except (OSError, ValueError):
             continue
         if image_dedupe_key(candidate_bytes) == image_key:
@@ -233,8 +235,7 @@ async def process_next_job(
     matched_asset_path = None
     ai_analysis_duration_ms = None
     try:
-        image_path: Path = resolve_file(asset_path)
-        image_bytes = await asyncio.to_thread(image_path.read_bytes)
+        image_bytes = await read_file(asset_path)
         analysis_started_at = perf_counter()
         try:
             with propagate_attributes(session_id=str(upload_id), trace_name="ocr-job"):
@@ -362,17 +363,23 @@ async def process_next_job(
         return True
 
 
-async def run_worker() -> None:
+async def worker_loop(sessions: async_sessionmaker[AsyncSession]) -> None:
+    """Process OCR jobs forever; stops only when cancelled."""
     logger.info("Starting OCR worker")
+    while True:
+        try:
+            did_work = await process_next_job(sessions)
+        except Exception:
+            logger.exception("OCR worker iteration failed")
+            did_work = False
+        if not did_work:
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+
+async def run_worker() -> None:
+    """Standalone worker entrypoint that owns the database engine lifecycle."""
     try:
-        while True:
-            try:
-                did_work = await process_next_job(async_session)
-            except Exception:
-                logger.exception("OCR worker iteration failed")
-                did_work = False
-            if not did_work:
-                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+        await worker_loop(async_session)
     finally:
         await engine.dispose()
 

@@ -7,3 +7,6 @@ filestore/
 .pytest_cache/
 *.egg-info/
 .DS_Store
+
+# Local finance documents (real data, never commit)
+assets/

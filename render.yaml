@@ -1,0 +1,53 @@
+# Render Blueprint: one free Docker web service runs the API, dashboard,
+# OCR worker and Telegram webhook bot together.
+services:
+  - type: web
+    name: ai-ocr-app
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: RUN_WORKER_IN_API
+        value: "true"
+      - key: TELEGRAM_WEBHOOK_ENABLED
+        value: "true"
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: SUPABASE_STORAGE_BUCKET
+        value: receipts
+      # Render routes container traffic to port 10000; the in-process bot calls the API there.
+      - key: PORT
+        value: "10000"
+      - key: OCR_API_BASE_URL
+        value: http://127.0.0.1:10000
+      - key: LLM_PROVIDER
+        value: google_genai
+      - key: LLM_MODEL
+        value: gemini-3.5-flash-lite
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: API_KEY
+        generateValue: true
+      # Values below are secrets entered in the Render dashboard.
+      - key: DATABASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ALLOWED_TELEGRAM_USER_IDS
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false

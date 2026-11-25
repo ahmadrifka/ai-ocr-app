@@ -19,10 +19,15 @@ let activeAccount = null;
 let jobDetailTrigger = null;
 let jobImageRequestVersion = 0;
 
+const LOGIN_URL = "/dashboard/login.html";
 const byId = (id) => document.getElementById(id);
 
 async function getJson(path, options = {}) {
   const response = await fetch(path, { cache: "no-store", ...options });
+  if (response.status === 401) {
+    window.location.assign(LOGIN_URL);
+    throw new Error("Sign in required");
+  }
   let payload = null;
   try {
     payload = await response.json();
@@ -554,6 +559,13 @@ byId("upload-form").addEventListener("submit", async (event) => {
   }
 });
 
+byId("logout-button").addEventListener("click", async () => {
+  try {
+    await fetch("/auth/logout", { method: "POST" });
+  } finally {
+    window.location.assign(LOGIN_URL);
+  }
+});
 byId("refresh-jobs").addEventListener("click", () => loadJobs());
 byId("load-more-jobs").addEventListener("click", () => loadJobs({ append: true }));
 byId("jobs-body").addEventListener("click", (event) => {

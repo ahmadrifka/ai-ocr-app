@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#eff3f2" />
     <title>Receipt Desk — AI OCR</title>
-    <link rel="stylesheet" href="dashboard.css?v=sub-category" />
-    <script src="dashboard.js?v=sub-category" defer></script>
+    <link rel="stylesheet" href="dashboard.css?v=auth" />
+    <script src="dashboard.js?v=auth" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -14,9 +14,12 @@
         <span class="brand-mark" aria-hidden="true">R</span>
         <span>Receipt Desk</span>
       </a>
-      <div class="connection" aria-live="polite">
-        <span class="connection-dot" id="connection-dot"></span>
-        <span id="connection-state">Connecting to OCR service</span>
+      <div class="topbar-actions">
+        <div class="connection" aria-live="polite">
+          <span class="connection-dot" id="connection-dot"></span>
+          <span id="connection-state">Connecting to OCR service</span>
+        </div>
+        <button class="logout-button" id="logout-button" type="button">Sign out</button>
       </div>
     </header>
 
