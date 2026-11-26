@@ -14,6 +14,7 @@ from bot.config import (
     BOT_POLL_INTERVAL_SECONDS,
     BOT_POLL_TIMEOUT_SECONDS,
     OCR_API_BASE_URL,
+    OCR_API_KEY,
 )
 from bot.formatters import (
     format_duplicate_notice,
@@ -29,7 +30,7 @@ from bot.keyboards import (
 )
 
 logger = logging.getLogger(__name__)
-ocr_client = OcrApiClient(OCR_API_BASE_URL)
+ocr_client = OcrApiClient(OCR_API_BASE_URL, OCR_API_KEY)
 from telegram.ext import ApplicationHandlerStop
 
 
