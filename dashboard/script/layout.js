@@ -1,16 +1,14 @@
 // Shared topbar + accounts modal. Each page needs <div id="app-nav"></div> and calls renderLayout('<page>').
 function renderLayout(activePage) {
-  const pages = [['index.html', 'dashboard'], ['transactions.html', 'transactions'], ['uploads.html', 'uploads']];
+  const pages = [['index.html', 'dashboard'], ['transactions.html', 'transactions'], ['uploads.html', 'uploads'], ['rekening.html', 'rekening']];
   document.getElementById('app-nav').innerHTML = `
     <header class="topbar"><div class="shell topbar-inner">
       <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">${escapeHtml(LABELS.appName.charAt(0))}</span>${escapeHtml(LABELS.appName)}</a>
       <nav class="topnav" aria-label="Navigasi utama">
         ${pages.map(([href, key]) => `<a href="${href}" class="${key === activePage ? 'active' : ''}" ${key === activePage ? 'aria-current="page"' : ''}>${escapeHtml(LABELS.nav[key])}</a>`).join('')}
-        <button id="open-accounts" type="button">${escapeHtml(LABELS.nav.accounts)}</button>
       </nav>
       <div id="connection" class="connection"><span class="dot"></span><span></span></div>
     </div></header>`;
-  document.getElementById('open-accounts').addEventListener('click', openAccountsModal);
   updateConnection();
   setInterval(updateConnection, 15000);
 }

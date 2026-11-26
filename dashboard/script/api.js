@@ -44,5 +44,7 @@ const Api = {
     return apiRequest('/api/documents/upload', { method: 'POST', body: form, headers: { 'Idempotency-Key': key } });
   },
   listAccounts: () => apiRequest('/api/accounts'),
+  createAccount: (payload) => apiRequest('/api/accounts', json('POST', payload)),
   updateAccount: (payload) => apiRequest('/api/accounts', json('PATCH', payload)),
+  deleteAccount: (payload) => apiRequest('/api/accounts', json('DELETE', payload)),
 };

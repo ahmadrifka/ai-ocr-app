@@ -109,6 +109,14 @@ class AccountOut(BaseModel):
     bank_name: str | None
 
 
+class AccountCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_number: str = Field(min_length=1, max_length=100)
+    account_name: str = Field(min_length=1, max_length=255)
+    bank_name: str = Field(min_length=1, max_length=255)
+
+
 class AccountUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,6 +126,14 @@ class AccountUpdate(BaseModel):
     account_number: str = Field(min_length=1, max_length=100)
     account_name: str = Field(min_length=1, max_length=255)
     bank_name: str = Field(min_length=1, max_length=255)
+
+
+class AccountDelete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_number: str | None = None
+    account_name: str | None = None
+    bank_name: str | None = None
 
 
 class UploadAccepted(BaseModel):

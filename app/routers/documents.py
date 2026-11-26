@@ -3,13 +3,15 @@ from pathlib import PurePosixPath
 import uuid
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Response, UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import OcrJob, Transaction, accounts_table
 from app.schemas import (
+    AccountCreate,
+    AccountDelete,
     AccountOut,
     AccountUpdate,
     DocumentOut,
@@ -81,6 +83,44 @@ async def update_account(payload: AccountUpdate, db: AsyncSession = Depends(get_
         )
     await db.commit()
     return new_values
+
+
+@accounts_router.post("", response_model=AccountOut, status_code=201)
+async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_db)):
+    new_values = {
+        "account_number": payload.account_number.strip(),
+        "account_name": payload.account_name.strip(),
+        "bank_name": payload.bank_name.strip(),
+    }
+    if not all(new_values.values()):
+        raise HTTPException(status_code=422, detail="Account fields cannot be blank")
+    await db.execute(accounts_table.insert().values(**new_values))
+    await db.commit()
+    return new_values
+
+
+@accounts_router.delete("", status_code=204)
+async def delete_account(payload: AccountDelete, db: AsyncSession = Depends(get_db)):
+    columns = (
+        accounts_table.c.account_number,
+        accounts_table.c.account_name,
+        accounts_table.c.bank_name,
+    )
+    values = (payload.account_number, payload.account_name, payload.bank_name)
+    conditions = [column.is_not_distinct_from(value) for column, value in zip(columns, values)]
+    matches = (
+        await db.execute(select(*columns).where(*conditions).with_for_update())
+    ).mappings().all()
+    if not matches:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if len(matches) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Account identity is ambiguous; account rows need unique identifiers to delete safely",
+        )
+    await db.execute(delete(accounts_table).where(*conditions))
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/upload", response_model=UploadAccepted, status_code=202)

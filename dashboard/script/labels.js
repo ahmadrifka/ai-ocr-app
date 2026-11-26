@@ -2,7 +2,7 @@
 // Text written directly in the HTML files is edited in those files.
 const LABELS = {
   appName: 'Lokality Finance',
-  nav: { dashboard: 'Dashboard', transactions: 'Transaksi', uploads: 'Unggahan', accounts: 'Rekening' },
+  nav: { dashboard: 'Dashboard', transactions: 'Transaksi', uploads: 'Unggahan', rekening: 'Rekening', accounts: 'Rekening' },
   online: 'API terhubung',
   offline: 'API tidak terjangkau',
   close: 'Tutup',

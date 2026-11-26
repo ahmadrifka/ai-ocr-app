@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rekening — Lokality Finance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link href="style/custom.css" rel="stylesheet">
+</head>
+<body>
+  <div id="app-nav"></div>
+
+  <main class="shell pb-10">
+    <section class="page-hero">
+      <div>
+        <h1 class="page-title">Rekening</h1>
+        <p class="page-lead">Daftar rekening milik perusahaan. Rekening ini dipakai worker untuk menentukan apakah transaksi adalah Uang masuk atau Transfer.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="reload-button" type="button" class="btn btn-sm btn-ghost">Muat ulang</button>
+        <button id="add-button" type="button" class="btn btn-sm btn-primary">Tambah rekening</button>
+      </div>
+    </section>
+
+    <div id="load-error" class="callout error" role="alert" hidden></div>
+
+    <section class="panel">
+      <div class="table-frame">
+        <table class="data-table">
+          <thead><tr><th>Bank</th><th>Nama rekening</th><th>No. rekening</th><th></th></tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div id="table-state" class="empty-state" role="status"></div>
+    </section>
+  </main>
+
+  <!-- Add/Edit dialog -->
+  <dialog id="account-dialog" class="modal">
+    <div class="modal-box max-w-md">
+      <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="Tutup">✕</button></form>
+      <h2 id="dialog-title" class="text-lg font-semibold mb-3">Tambah rekening</h2>
+      <div id="dialog-error" class="callout error hidden" role="alert"></div>
+      <form id="account-form" class="grid gap-3">
+        <label class="field"><span>Bank</span><input name="bank_name" required maxlength="255" class="control"></label>
+        <label class="field"><span>Nama rekening</span><input name="account_name" required maxlength="255" class="control"></label>
+        <label class="field"><span>No. rekening</span><input name="account_number" required maxlength="100" class="control"></label>
+        <div class="flex gap-2 mt-1">
+          <button class="btn btn-sm btn-primary" type="submit" id="dialog-submit">Simpan</button>
+          <button class="btn btn-sm btn-ghost" type="button" id="dialog-cancel">Batal</button>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>Tutup</button></form>
+  </dialog>
+
+  <!-- Delete confirmation dialog -->
+  <dialog id="delete-dialog" class="modal">
+    <div class="modal-box max-w-sm">
+      <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="Tutup">✕</button></form>
+      <h2 class="text-lg font-semibold mb-2">Hapus rekening?</h2>
+      <p id="delete-desc" class="text-sm text-base-content/60 mb-4"></p>
+      <div id="delete-error" class="callout error hidden" role="alert"></div>
+      <div class="flex gap-2">
+        <button id="delete-confirm" type="button" class="btn btn-sm btn-error">Hapus</button>
+        <button id="delete-cancel" type="button" class="btn btn-sm btn-ghost">Batal</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>Tutup</button></form>
+  </dialog>
+
+  <script src="script/labels.js"></script>
+  <script src="script/format.js"></script>
+  <script src="script/api.js"></script>
+  <script src="script/layout.js"></script>
+  <script src="script/rekening.js"></script>
+</body>
+</html>
