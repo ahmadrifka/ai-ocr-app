@@ -14,7 +14,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   errorMessage.hidden = true;
   if (!passwordInput.value) {
-    showError("Enter the password.");
+    showError("Masukkan kata sandi.");
     return;
   }
 
@@ -29,9 +29,9 @@ form.addEventListener("submit", async (event) => {
       window.location.assign(DASHBOARD_URL);
       return;
     }
-    showError(response.status === 401 ? "Incorrect password." : `Sign in failed (${response.status}).`);
+    showError(response.status === 401 ? "Kata sandi salah." : `Gagal masuk (${response.status}).`);
   } catch {
-    showError("Could not reach the server. Try again.");
+    showError("Server tidak dapat dihubungi. Coba lagi.");
   } finally {
     submitButton.disabled = false;
   }

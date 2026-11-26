@@ -1,39 +1,33 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#eff3f2" />
-    <title>Sign in — Receipt Desk</title>
-    <link rel="stylesheet" href="dashboard.css?v=auth" />
-    <script src="login.js?v=auth" defer></script>
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="/dashboard/" aria-label="Receipt Desk home">
-        <span class="brand-mark" aria-hidden="true">R</span>
-        <span>Receipt Desk</span>
-      </a>
-    </header>
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Masuk — Lokality Finance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link href="style/custom.css" rel="stylesheet">
+  <script src="login.js?v=lokality" defer></script>
+</head>
+<body>
+  <header class="topbar"><div class="shell topbar-inner">
+    <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">L</span>Lokality Finance</a>
+  </div></header>
 
-    <main class="login-shell">
-      <form class="login-card" id="login-form" novalidate>
-        <p class="eyebrow">Receipt Desk</p>
-        <h1>Sign in</h1>
-        <p class="intro-copy">Enter the team password to open the OCR dashboard.</p>
-        <label class="login-label" for="login-password">Password</label>
-        <input
-          class="login-input"
-          id="login-password"
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          autofocus
-        />
-        <p class="login-error" id="login-error" role="alert" hidden></p>
-        <button class="button button-primary login-submit" id="login-submit" type="submit">Sign in</button>
-      </form>
-    </main>
-  </body>
+  <main class="shell grid min-h-[calc(100vh-60px)] place-items-center py-10">
+    <form class="panel w-full max-w-sm p-7 grid gap-4" id="login-form" novalidate>
+      <div>
+        <h1 class="page-title">Masuk</h1>
+        <p class="page-lead">Masukkan kata sandi tim untuk membuka dashboard keuangan.</p>
+      </div>
+      <label class="field"><span>Kata sandi</span>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required autofocus>
+      </label>
+      <div class="callout error mb-0" id="login-error" role="alert" hidden></div>
+      <button class="btn btn-primary w-full" id="login-submit" type="submit">Masuk</button>
+    </form>
+  </main>
+</body>
 </html>
