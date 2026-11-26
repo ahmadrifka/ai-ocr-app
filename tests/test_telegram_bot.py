@@ -7,16 +7,28 @@ from telegram.constants import ParseMode
 
 from bot.client import OcrApiClient
 from bot.formatters import (
+    REVIEW_FLAG_LABELS,
+    TRANSACTION_TYPE_LABELS,
     format_currency,
     format_duplicate_notice,
     format_ocr_failure,
+    format_review_flag,
     format_transaction_success,
+    format_transaction_type,
 )
 from bot.handlers import (
     _normalize_image_to_jpeg,
+    handle_callback_query,
     help_command,
     start_command,
     status_command,
+)
+from bot.keyboards import (
+    CATEGORIES,
+    CATEGORY_HIERARCHY,
+    build_category_keyboard,
+    build_confirmation_keyboard,
+    build_subcategory_keyboard,
 )
 from bot.main import build_bot_app
 
@@ -50,6 +62,42 @@ class TestFormatters(unittest.TestCase):
         self.assertIn("TRX-998877", msg)
         self.assertIn("high_amount_check", msg)
         self.assertIn("#42", msg)
+        self.assertIn("Uang Keluar", msg)
+
+    def test_format_transaction_type_mapping(self):
+        self.assertEqual(format_transaction_type("EXPENSES"), "Uang Keluar")
+        self.assertEqual(format_transaction_type("EXPENSE"), "Uang Keluar")
+        self.assertEqual(format_transaction_type("INCOMING"), "Uang Masuk")
+        self.assertEqual(format_transaction_type("TRANSFER"), "Transfer")
+        self.assertEqual(format_transaction_type("expenses"), "Uang Keluar")
+        self.assertEqual(format_transaction_type(None), "Uang Keluar")
+        self.assertEqual(format_transaction_type("CUSTOM"), "CUSTOM")
+
+    def test_format_transaction_success_types(self):
+        doc_inc = {"id": 1, "amount": 1000, "transaction_type": "INCOMING"}
+        self.assertIn("Uang Masuk", format_transaction_success(doc_inc))
+        doc_trf = {"id": 2, "amount": 2000, "transaction_type": "TRANSFER"}
+        self.assertIn("Transfer", format_transaction_success(doc_trf))
+
+    def test_format_review_flag_mapping(self):
+        self.assertEqual(format_review_flag("abusive_language"), "Bahasa tidak pantas")
+        self.assertEqual(format_review_flag("sensitive_credentials_request"), "Permintaan kredensial / data rahasia")
+        self.assertEqual(format_review_flag("urgent_payment_pressure"), "Desakan pembayaran mencurigakan")
+        self.assertEqual(format_review_flag("instruction_like_content"), "Teks instruksi mencurigakan")
+        self.assertEqual(format_review_flag("suspicious_wording"), "Kata-kata mencurigakan")
+        self.assertEqual(format_review_flag("unmapped_flag"), "unmapped_flag")
+
+    def test_format_transaction_success_with_mapped_review_flags(self):
+        doc = {
+            "id": 43,
+            "amount": 100000,
+            "review_flags": ["suspicious_wording", "urgent_payment_pressure"],
+        }
+        msg = format_transaction_success(doc)
+        self.assertIn(
+            "⚠️ <b>Catatan Review:</b> Kata-kata mencurigakan, Desakan pembayaran mencurigakan",
+            msg,
+        )
 
     def test_format_duplicate_notice(self):
         doc = {
@@ -198,3 +246,147 @@ class TestBotBuilder(unittest.TestCase):
         with patch("bot.main.TELEGRAM_BOT_TOKEN", "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"):
             app = build_bot_app()
             self.assertIsNotNone(app)
+
+
+class TestInlineKeyboards(unittest.TestCase):
+    def test_confirmation_keyboard(self):
+        kb = build_confirmation_keyboard(42)
+        self.assertEqual(len(kb.inline_keyboard), 1)
+        self.assertEqual(len(kb.inline_keyboard[0]), 2)
+        self.assertEqual(kb.inline_keyboard[0][0].text, "✅ Sesuai")
+        self.assertEqual(kb.inline_keyboard[0][0].callback_data, "tx_confirm:42")
+        self.assertEqual(kb.inline_keyboard[0][1].text, "✏️ Belum Sesuai")
+        self.assertEqual(kb.inline_keyboard[0][1].callback_data, "tx_edit:42")
+
+    def test_category_keyboard(self):
+        kb = build_category_keyboard(42)
+        # Check all categories appear in buttons
+        button_texts = [btn.text for row in kb.inline_keyboard for btn in row]
+        for cat in CATEGORIES:
+            self.assertIn(cat, button_texts)
+        self.assertIn("🔙 Batal / Kembali", button_texts)
+
+    def test_subcategory_keyboard(self):
+        cat_idx = CATEGORIES.index("Beban Operasional")
+        kb = build_subcategory_keyboard(42, cat_idx)
+        button_texts = [btn.text for row in kb.inline_keyboard for btn in row]
+        for sub in CATEGORY_HIERARCHY["Beban Operasional"]:
+            self.assertIn(sub, button_texts)
+        self.assertIn("🔙 Pilih Kategori Lain", button_texts)
+
+    def test_category_keyboard_filtered_by_tx_type(self):
+        # EXPENSES should not include 'Penjualan'
+        kb_exp = build_category_keyboard(42, tx_type="EXPENSES")
+        exp_texts = [btn.text for row in kb_exp.inline_keyboard for btn in row]
+        self.assertNotIn("Penjualan", exp_texts)
+        self.assertIn("Beban Operasional", exp_texts)
+        self.assertIn("Persediaan", exp_texts)
+
+        # INCOMING should not include 'Persediaan' or 'Beban Operasional'
+        kb_inc = build_category_keyboard(42, tx_type="INCOMING")
+        inc_texts = [btn.text for row in kb_inc.inline_keyboard for btn in row]
+        self.assertIn("Penjualan", inc_texts)
+        self.assertNotIn("Persediaan", inc_texts)
+        self.assertNotIn("Beban Operasional", inc_texts)
+
+    def test_subcategory_keyboard_filtered_by_tx_type(self):
+        cat_idx = CATEGORIES.index("Modal dan Prive")
+        # EXPENSES for Modal and Prive should only show Prive, not Modal
+        kb_exp = build_subcategory_keyboard(42, cat_idx, tx_type="EXPENSES")
+        exp_subs = [btn.text for row in kb_exp.inline_keyboard for btn in row]
+        self.assertIn("Prive", exp_subs)
+        self.assertNotIn("Modal", exp_subs)
+
+        # INCOMING for Modal and Prive should only show Modal, not Prive
+        kb_inc = build_subcategory_keyboard(42, cat_idx, tx_type="INCOMING")
+        inc_subs = [btn.text for row in kb_inc.inline_keyboard for btn in row]
+        self.assertIn("Modal", inc_subs)
+        self.assertNotIn("Prive", inc_subs)
+
+
+class TestCallbackQueryHandler(unittest.IsolatedAsyncioTestCase):
+    async def test_handle_confirm(self):
+        update = MagicMock()
+        query = AsyncMock()
+        query.data = "tx_confirm:42"
+        query.from_user.id = 12345
+        update.callback_query = query
+        context = MagicMock()
+
+        with patch("bot.handlers.ocr_client.get_document", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = {"id": 42, "amount": 50000, "category": "Persediaan", "sub_category": "Bahan Baku"}
+            await handle_callback_query(update, context)
+            query.answer.assert_called_once()
+            query.edit_message_text.assert_called_once()
+            kwargs = query.edit_message_text.call_args.kwargs
+            self.assertIn("Terkonfirmasi (Sesuai) [Terkunci]", kwargs["text"])
+            self.assertIsNone(kwargs["reply_markup"])
+
+    async def test_handle_edit(self):
+        update = MagicMock()
+        query = AsyncMock()
+        query.data = "tx_edit:42"
+        update.callback_query = query
+        context = MagicMock()
+
+        await handle_callback_query(update, context)
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_called_once()
+        kwargs = query.edit_message_text.call_args.kwargs
+        self.assertIn("Edit Kategori Transaksi", kwargs["text"])
+        self.assertIsNotNone(kwargs["reply_markup"])
+
+    async def test_handle_cat(self):
+        update = MagicMock()
+        query = AsyncMock()
+        cat_idx = CATEGORIES.index("Beban Operasional")
+        query.data = f"tx_cat:42:{cat_idx}"
+        update.callback_query = query
+        context = MagicMock()
+
+        await handle_callback_query(update, context)
+        query.answer.assert_called_once()
+        query.edit_message_text.assert_called_once()
+        kwargs = query.edit_message_text.call_args.kwargs
+        self.assertIn("Beban Operasional", kwargs["text"])
+        self.assertIn("Sub Kategori", kwargs["text"])
+        self.assertIsNotNone(kwargs["reply_markup"])
+
+    async def test_handle_sub(self):
+        update = MagicMock()
+        query = AsyncMock()
+        cat_idx = CATEGORIES.index("Beban Operasional")
+        sub_idx = CATEGORY_HIERARCHY["Beban Operasional"].index("Biaya-Konsumsi")
+        query.data = f"tx_sub:42:{cat_idx}:{sub_idx}"
+        update.callback_query = query
+        context = MagicMock()
+
+        with patch("bot.handlers.ocr_client.update_document", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = {
+                "id": 42,
+                "amount": 50000,
+                "category": "Beban Operasional",
+                "sub_category": "Biaya-Konsumsi",
+            }
+            await handle_callback_query(update, context)
+            mock_update.assert_called_once_with(42, {"category": "Beban Operasional", "sub_category": "Biaya-Konsumsi"})
+            query.edit_message_text.assert_called_once()
+            kwargs = query.edit_message_text.call_args.kwargs
+            self.assertIn("Kategori Diperbarui", kwargs["text"])
+            self.assertIn("Biaya-Konsumsi", kwargs["text"])
+            self.assertIsNone(kwargs["reply_markup"])
+
+    async def test_handle_back(self):
+        update = MagicMock()
+        query = AsyncMock()
+        query.data = "tx_back:42"
+        update.callback_query = query
+        context = MagicMock()
+
+        with patch("bot.handlers.ocr_client.get_document", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = {"id": 42, "amount": 50000, "category": "Persediaan", "sub_category": "Bahan Baku"}
+            await handle_callback_query(update, context)
+            query.answer.assert_called_once()
+            query.edit_message_text.assert_called_once()
+            kwargs = query.edit_message_text.call_args.kwargs
+            self.assertIsNotNone(kwargs["reply_markup"])

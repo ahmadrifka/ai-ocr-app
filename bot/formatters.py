@@ -3,6 +3,34 @@
 from decimal import Decimal
 from typing import Any
 
+REVIEW_FLAG_LABELS: dict[str, str] = {
+    "abusive_language": "Bahasa tidak pantas",
+    "sensitive_credentials_request": "Permintaan kredensial / data rahasia",
+    "urgent_payment_pressure": "Desakan pembayaran mencurigakan",
+    "instruction_like_content": "Teks instruksi mencurigakan",
+    "suspicious_wording": "Kata-kata mencurigakan",
+}
+
+
+def format_review_flag(flag: str) -> str:
+    """Map technical review flag to human-readable Indonesian label."""
+    return REVIEW_FLAG_LABELS.get(flag, flag)
+
+
+TRANSACTION_TYPE_LABELS: dict[str, str] = {
+    "EXPENSES": "Uang Keluar",
+    "EXPENSE": "Uang Keluar",
+    "INCOMING": "Uang Masuk",
+    "TRANSFER": "Transfer",
+}
+
+
+def format_transaction_type(tx_type: str | None) -> str:
+    """Map technical transaction type to human-readable Indonesian label."""
+    if not tx_type:
+        return "Uang Keluar"
+    return TRANSACTION_TYPE_LABELS.get(str(tx_type).upper(), str(tx_type))
+
 
 def format_currency(amount: Any) -> str:
     """Format numeric amount into standard IDR string."""
@@ -21,7 +49,9 @@ def format_currency(amount: Any) -> str:
         return str(amount)
 
 
-def format_transaction_success(doc: dict[str, Any]) -> str:
+def format_transaction_success(
+    doc: dict[str, Any], status_label: str | None = None
+) -> str:
     """Format extracted transaction details into an informative Telegram message."""
     amount_str = format_currency(doc.get("amount"))
     date_str = doc.get("transaction_date") or "Tidak tertera"
@@ -33,7 +63,7 @@ def format_transaction_success(doc: dict[str, Any]) -> str:
     category = doc.get("category") or "Uncategorized"
     sub_category = doc.get("sub_category") or "Uncategorized"
     description = doc.get("description") or "-"
-    tx_type = doc.get("transaction_type") or "EXPENSES"
+    tx_type = format_transaction_type(doc.get("transaction_type"))
     tx_id = doc.get("transaction_id") or "Tidak tertera"
     source_bank = doc.get("source_bank") or "-"
     source_acc = doc.get("source_account_number") or "-"
@@ -44,10 +74,15 @@ def format_transaction_success(doc: dict[str, Any]) -> str:
     flags = doc.get("review_flags") or []
     flag_notice = ""
     if flags:
-        flag_notice = f"\n⚠️ <b>Catatan Review:</b> {', '.join(flags)}"
+        formatted_flags = [format_review_flag(f) for f in flags]
+        flag_notice = f"\n⚠️ <b>Catatan Review:</b> {', '.join(formatted_flags)}"
+
+    header = "✅ <b>Struk Berhasil Diekstrak & Dicatat!</b>"
+    if status_label:
+        header = f"{header}\n📌 <b>Status:</b> {status_label}"
 
     return (
-        "✅ <b>Struk Berhasil Diekstrak & Dicatat!</b>\n\n"
+        f"{header}\n\n"
         f"💰 <b>Nominal:</b> {amount_str}\n"
         f"🏷️ <b>Kategori:</b> {category}\n"
         f"🏷️ <b>Sub Kategori:</b> {sub_category}\n"
