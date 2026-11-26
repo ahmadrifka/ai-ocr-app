@@ -1,242 +1,127 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#eff3f2" />
-    <title>Receipt Desk — AI OCR</title>
-    <link rel="stylesheet" href="dashboard.css?v=auth" />
-    <script src="dashboard.js?v=auth" defer></script>
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="/dashboard/" aria-label="Receipt Desk home">
-        <span class="brand-mark" aria-hidden="true">R</span>
-        <span>Receipt Desk</span>
-      </a>
-      <div class="topbar-actions">
-        <div class="connection" aria-live="polite">
-          <span class="connection-dot" id="connection-dot"></span>
-          <span id="connection-state">Connecting to OCR service</span>
-        </div>
-        <button class="logout-button" id="logout-button" type="button">Sign out</button>
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — Lokality Finance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link href="style/custom.css" rel="stylesheet">
+</head>
+<body>
+  <div id="app-nav"></div>
+
+  <main class="shell pb-10">
+    <section class="page-hero">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-lead">Ringkasan uang keluar dan uang masuk dari struk yang sudah diproses. Transfer antar-rekening sendiri tidak dihitung.</p>
       </div>
-    </header>
+      <div class="flex items-end gap-2">
+        <label class="field"><span>Periode</span>
+          <select id="period" class="control">
+            <option value="all">Semua waktu</option>
+            <option value="month">Bulan ini</option>
+            <option value="30">30 hari terakhir</option>
+            <option value="7">7 hari terakhir</option>
+          </select>
+        </label>
+        <button id="reload-button" type="button" class="btn btn-sm btn-ghost">Muat ulang</button>
+      </div>
+    </section>
 
-    <main class="page-shell">
-      <section class="intro" aria-labelledby="page-title">
-        <div>
-          <p class="eyebrow">Local workspace <span> / </span> OCR pipeline</p>
-          <h1 id="page-title">Receipt operations</h1>
-          <p class="intro-copy">Send a receipt through OCR, follow its progress, and review the transactions it produces.</p>
+    <div id="load-error" class="callout error" role="alert" hidden></div>
+
+    <section class="panel summary-grid" aria-label="Ringkasan utama">
+      <div class="summary-item"><div class="summary-label">Total uang keluar</div><div class="summary-value num" id="kpi-expense">Rp0</div><div class="summary-note">termasuk prive, cicilan utang, aset, dan pajak</div></div>
+      <div class="summary-item"><div class="summary-label">Total uang masuk</div><div class="summary-value num" id="kpi-income">Rp0</div><div class="summary-note">termasuk modal dan piutang</div></div>
+      <div class="summary-item"><div class="summary-label">Jumlah transaksi</div><div class="summary-value num" id="kpi-count">0</div><div class="summary-note" id="kpi-count-note"></div></div>
+      <div class="summary-item"><div class="summary-label">Perlu ditinjau</div><div class="summary-value num" id="kpi-review">0</div><div class="summary-note">data kosong (termasuk deskripsi), kategori belum sesuai, atau bertanda</div></div>
+    </section>
+    <p class="note-line" id="excluded-note"></p>
+
+    <section class="panel mt-4" aria-label="Rincian uang keluar dan uang masuk per kelompok">
+      <div class="panel-head">
+        <div><h2 class="panel-title">Uang keluar dan uang masuk per kelompok</h2><p class="panel-sub">Dikelompokkan dari kategori transaksi. Tidak termasuk transfer.</p></div>
+        <div class="toggle-group" id="group-toggle" role="group" aria-label="Tampilan kelompok">
+          <button type="button" data-mode="list" aria-pressed="true">Daftar</button>
+          <button type="button" data-mode="pie" aria-pressed="false">Pie chart</button>
         </div>
-        <div class="refresh-note">
-          <span class="refresh-mark" aria-hidden="true">↻</span>
-          <span>Processing refreshes every 5 seconds</span>
+      </div>
+      <div class="panel-body">
+        <div class="grid gap-8 md:grid-cols-2" id="group-view-list">
+          <div><h3 class="summary-label">Uang keluar</h3><div class="stat-list" id="group-expense"></div></div>
+          <div><h3 class="summary-label">Uang masuk</h3><div class="stat-list" id="group-income"></div></div>
+        </div>
+        <div class="grid gap-8 md:grid-cols-2" id="group-view-pie" hidden>
+          <div><h3 class="summary-label">Uang keluar</h3><div class="chart-box" id="pie-expense-box"><canvas aria-label="Pie chart uang keluar per kelompok" role="img"></canvas><p class="empty-state"></p></div></div>
+          <div><h3 class="summary-label">Uang masuk</h3><div class="chart-box" id="pie-income-box"><canvas aria-label="Pie chart uang masuk per kelompok" role="img"></canvas><p class="empty-state"></p></div></div>
+        </div>
+        <p class="note-line" id="group-note"></p>
+      </div>
+    </section>
+
+    <div class="dash-grid">
+      <section class="panel panel-fill">
+        <div class="panel-head">
+          <div><h2 class="panel-title">Uang keluar per kategori</h2><p class="panel-sub">Tidak termasuk transfer</p></div>
+          <div class="toggle-group" id="category-toggle" role="group" aria-label="Tingkat kategori">
+            <button type="button" data-mode="category" aria-pressed="true">Kategori</button>
+            <button type="button" data-mode="sub" aria-pressed="false">Sub kategori</button>
+          </div>
+        </div>
+        <div class="panel-body"><div class="chart-box chart-fill" id="category-box"><canvas aria-label="Grafik uang keluar per kategori" role="img"></canvas><p class="empty-state"></p></div></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <div><h2 class="panel-title">Arus kas per waktu</h2><p class="panel-sub">Berdasarkan tanggal transaksi (WIB)</p></div>
+          <div class="toggle-group" id="trend-toggle" role="group" aria-label="Satuan waktu">
+            <button type="button" data-mode="daily" aria-pressed="true">Harian</button>
+            <button type="button" data-mode="weekly" aria-pressed="false">Mingguan</button>
+            <button type="button" data-mode="monthly" aria-pressed="false">Bulanan</button>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-end gap-3 px-5 pt-2">
+          <label class="field"><span>Dari tanggal</span><input id="trend-from" type="date" class="control"></label>
+          <label class="field"><span>Sampai tanggal</span><input id="trend-to" type="date" class="control"></label>
+          <button id="trend-range-reset" type="button" class="btn btn-xs btn-ghost" hidden>Reset rentang</button>
+        </div>
+        <div class="flex items-center justify-between gap-2 px-5 pt-2">
+          <button id="trend-prev" type="button" class="btn btn-xs btn-ghost" aria-label="Periode sebelumnya">‹</button>
+          <span class="panel-sub" id="trend-range" aria-live="polite"></span>
+          <button id="trend-next" type="button" class="btn btn-xs btn-ghost" aria-label="Periode berikutnya">›</button>
+        </div>
+        <div class="panel-body"><div class="chart-box" id="trend-box"><canvas aria-label="Grafik arus kas uang keluar dan uang masuk" role="img"></canvas><p class="empty-state"></p></div><p class="note-line" id="trend-caption"></p></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><h2 class="panel-title">Kelengkapan data</h2><p class="panel-sub">Dari transaksi pada periode yang dipilih</p></div></div>
+        <div class="panel-body">
+          <p class="completeness-sentence" id="complete-sentence"></p>
+          <p class="note-line" id="complete-detail"></p>
+          <div class="seg-bar" id="complete-bar" aria-hidden="true"></div>
+          <h3 class="summary-label" id="complete-list-title" hidden></h3>
+          <div class="stat-list" id="complete-list"></div>
+          <p class="note-line" id="complete-note"></p>
         </div>
       </section>
-
-      <section class="upload-panel" aria-labelledby="upload-title">
-        <div class="upload-copy">
-          <span class="upload-glyph" aria-hidden="true">＋</span>
-          <div>
-            <h2 id="upload-title">Add a receipt</h2>
-            <p>JPEG, WebP, GIF, or TIFF · up to 20 MB</p>
-          </div>
-        </div>
-        <form id="upload-form" class="upload-form">
-          <label class="file-control" for="receipt-file">
-            <span id="file-name">Choose a receipt image</span>
-            <input id="receipt-file" name="file" type="file" accept="image/jpeg,image/webp,image/gif,image/tiff" required />
-          </label>
-          <button class="button button-primary" id="upload-button" type="submit">Queue receipt</button>
-        </form>
-        <p class="upload-feedback" id="upload-feedback" role="status" aria-live="polite"></p>
-      </section>
-
-      <section class="data-section" aria-labelledby="jobs-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">The queue</p>
-            <h2 id="jobs-title">Processing</h2>
-            <p class="section-description">Open Details to see attempts, AI analysis time, and linked transaction IDs.</p>
-          </div>
-          <button class="button button-quiet" id="refresh-jobs" type="button">Refresh</button>
-        </div>
-        <p class="inline-error" id="jobs-error" role="alert" hidden></p>
-        <div class="table-frame">
-          <table class="jobs-table">
-            <thead>
-              <tr>
-                <th scope="col">Upload</th>
-                <th scope="col">Status</th>
-                <th scope="col">Attempts</th>
-                <th scope="col">Received</th>
-                <th scope="col">Transaction</th>
-                <th scope="col">Details</th>
-              </tr>
-            </thead>
-            <tbody id="jobs-body"></tbody>
-          </table>
-          <div class="empty-state" id="jobs-empty" hidden>
-            <span class="empty-icon" aria-hidden="true">▧</span>
-            <strong>No receipts in the queue yet</strong>
-            <span>Choose an image above to start the first OCR job.</span>
-          </div>
-        </div>
-        <div class="section-footer">
-          <span class="result-note" id="jobs-count">Showing the latest uploads</span>
-          <button class="text-button" id="load-more-jobs" type="button" hidden>Load older uploads</button>
+      <section class="panel">
+        <div class="panel-head"><div><h2 class="panel-title">Komposisi dan pemrosesan</h2></div><a class="link-quiet" href="uploads.html">Lihat unggahan</a></div>
+        <div class="panel-body">
+          <div class="seg-bar" id="type-bar" aria-hidden="true"></div>
+          <div class="legend" id="type-legend"></div>
+          <div class="stat-list" id="pipeline-list"></div>
         </div>
       </section>
+    </div>
+  </main>
 
-      <dialog class="transaction-dialog job-dialog" id="job-dialog" aria-labelledby="job-dialog-title">
-        <div class="dialog-shell">
-          <header class="dialog-header">
-            <div>
-              <p class="section-kicker">OCR processing task</p>
-              <h2 id="job-dialog-title">Upload details</h2>
-            </div>
-            <button class="dialog-close" id="close-job-dialog" type="button" aria-label="Close upload details">×</button>
-          </header>
-          <div class="dialog-content job-dialog-content">
-            <section class="receipt-column" aria-label="Uploaded image">
-              <p class="receipt-match-note" id="job-receipt-match" hidden></p>
-              <div class="receipt-preview">
-                <p class="receipt-placeholder" id="job-receipt-placeholder">Loading upload image…</p>
-                <img class="receipt-image" id="job-receipt-image" alt="Uploaded receipt image" hidden />
-                <p class="receipt-placeholder receipt-error" id="job-receipt-error" hidden>Upload image could not be previewed.</p>
-              </div>
-              <a class="receipt-open" id="job-receipt-open" target="_blank" rel="noopener noreferrer" hidden>Open uploaded image in a new tab</a>
-            </section>
-            <dl class="detail-grid job-detail-grid" id="job-detail-list"></dl>
-          </div>
-        </div>
-      </dialog>
-
-      <section class="data-section transactions-section" aria-labelledby="transactions-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">Saved records</p>
-            <h2 id="transactions-title">Transactions</h2>
-            <p class="section-description">Extracted transaction details, newest first.</p>
-          </div>
-          <button class="button button-quiet" id="refresh-transactions" type="button">Refresh</button>
-        </div>
-        <p class="inline-error" id="transactions-error" role="alert" hidden></p>
-        <div class="table-frame">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Date</th>
-                <th scope="col">Description</th>
-                <th scope="col">Bank</th>
-                <th scope="col">Category</th>
-                <th scope="col">Sub Category</th>
-                <th scope="col">Type</th>
-                <th scope="col" class="amount-heading">Amount</th>
-                <th scope="col">Details</th>
-              </tr>
-            </thead>
-            <tbody id="transactions-body"></tbody>
-          </table>
-          <div class="empty-state" id="transactions-empty" hidden>
-            <span class="empty-icon" aria-hidden="true">▤</span>
-            <strong>No transactions saved yet</strong>
-            <span>Completed OCR jobs will appear here when they produce a transaction.</span>
-          </div>
-        </div>
-        <div class="section-footer">
-          <span class="result-note" id="transactions-count">Transactions</span>
-          <button class="text-button" id="load-more-transactions" type="button" hidden>Load older transactions</button>
-        </div>
-      </section>
-
-      <dialog class="transaction-dialog" id="transaction-dialog" aria-labelledby="dialog-title">
-        <div class="dialog-shell">
-          <header class="dialog-header">
-            <div>
-              <p class="section-kicker">Transaction record</p>
-              <h2 id="dialog-title">Transaction details</h2>
-            </div>
-            <button class="button button-quiet" id="edit-transaction" type="button" hidden>Edit transaction</button>
-            <button class="dialog-close" id="close-dialog" type="button" aria-label="Close transaction details">×</button>
-          </header>
-          <p class="inline-error" id="detail-error" role="alert" hidden></p>
-          <p class="detail-loading" id="detail-loading" role="status" aria-live="polite" hidden>Loading transaction details…</p>
-          <div class="dialog-content" id="detail-content" hidden>
-            <section class="receipt-column" aria-label="Receipt image">
-              <div class="receipt-preview">
-                <p class="receipt-placeholder" id="receipt-placeholder">Loading receipt image…</p>
-                <img class="receipt-image" id="receipt-image" alt="Receipt image" hidden />
-                <p class="receipt-placeholder receipt-error" id="receipt-error" hidden>Receipt image could not be previewed.</p>
-              </div>
-              <a class="receipt-open" id="receipt-open" target="_blank" rel="noopener noreferrer" hidden>Open receipt image in a new tab</a>
-            </section>
-            <dl class="detail-grid" id="detail-list"></dl>
-          </div>
-          <form id="transaction-edit-form" class="edit-form" hidden>
-            <label>Transaction date<input name="transaction_date" placeholder="ISO 8601, e.g. 2026-11-20T09:30:00+07:00" /></label>
-            <label>Bank reference<input name="transaction_id" maxlength="255" /></label>
-            <label>Description<input name="description" required maxlength="10000" /></label>
-            <label>Category<select name="category"><option>Uncategorized</option><option>Persediaan</option><option>Penjualan</option><option>Modal dan Prive</option><option>Beban Operasional</option><option>Utang/Piutang</option><option>Aset Tetap/Investasi</option><option>Pendapatan/Beban Lain</option><option>Pajak</option></select></label>
-            <label>Sub Category<select name="sub_category"><option>Uncategorized</option><option>Bahan Baku</option><option>Penjualan Produk</option><option>Modal</option><option>Prive</option><option>Biaya-Gaji Karyawan</option><option>Biaya-Konsumsi</option><option>Biaya-Perlengkapan Kantor dan Administrasi</option><option>Biaya-Transportasi</option><option>Biaya-Ongkir</option><option>Biaya-Perbaikan Bangunan</option><option>Biaya-Operasional</option><option>Biaya-Sosial</option><option>Utang</option><option>Piutang</option><option>Biaya-Pembelian Aset</option><option>Beban Lain</option><option>Pendapatan Lain</option><option>Pembayaran pajak</option></select></label>
-            <label>Type<select name="transaction_type"><option value="EXPENSES">Expense</option><option value="INCOMING">Incoming</option><option value="TRANSFER">Transfer</option></select></label>
-            <label>Amount<input name="amount" type="number" min="0" step="0.01" /></label>
-            <label>Source bank<input name="source_bank" maxlength="255" /></label>
-            <label>Source account number<input name="source_account_number" maxlength="100" /></label>
-            <label>Source account name<input name="source_account_name" maxlength="255" /></label>
-            <label>Beneficiary bank<input name="beneficiary_bank" maxlength="255" /></label>
-            <label>Beneficiary account number<input name="beneficiary_account_number" maxlength="100" /></label>
-            <label>Beneficiary account name<input name="benecifiacry_account_name" maxlength="255" /></label>
-            <p class="inline-error" id="transaction-edit-error" role="alert" hidden></p>
-            <div class="edit-actions"><button class="button button-quiet" id="cancel-transaction-edit" type="button">Cancel</button><button class="button button-primary" type="submit">Save transaction</button></div>
-          </form>
-        </div>
-      </dialog>
-
-      <section class="data-section accounts-section" aria-labelledby="accounts-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">Banking setup</p>
-            <h2 id="accounts-title">Our accounts</h2>
-            <p class="section-description">Manage the bank accounts used to recognize incoming transfers.</p>
-          </div>
-          <button class="button button-quiet" id="refresh-accounts" type="button">Refresh</button>
-        </div>
-        <p class="inline-error" id="accounts-error" role="alert" hidden></p>
-        <div class="table-frame">
-          <table>
-            <thead><tr><th scope="col">Bank</th><th scope="col">Account name</th><th scope="col">Account number</th><th scope="col">Action</th></tr></thead>
-            <tbody id="accounts-body"></tbody>
-          </table>
-          <div class="empty-state" id="accounts-empty" hidden>
-            <strong>No bank accounts configured</strong>
-            <span>Add account rows directly to the accounts table to enable incoming-transfer matching.</span>
-          </div>
-        </div>
-      </section>
-
-      <dialog class="transaction-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
-        <div class="dialog-shell">
-          <header class="dialog-header">
-            <div><p class="section-kicker">Banking setup</p><h2 id="account-dialog-title">Update account</h2></div>
-            <button class="dialog-close" id="close-account-dialog" type="button" aria-label="Close account editor">×</button>
-          </header>
-          <form id="account-edit-form" class="edit-form">
-            <label>Bank name<input name="bank_name" required maxlength="255" /></label>
-            <label>Account name<input name="account_name" required maxlength="255" /></label>
-            <label>Account number<input name="account_number" required maxlength="100" /></label>
-            <p class="inline-error" id="account-edit-error" role="alert" hidden></p>
-            <div class="edit-actions"><button class="button button-quiet" id="cancel-account-edit" type="button">Cancel</button><button class="button button-primary" type="submit">Save account</button></div>
-          </form>
-        </div>
-      </dialog>
-
-      <footer class="page-footer">
-        <span>Receipt Desk</span>
-        <span>Local dashboard · API on 127.0.0.1:8765</span>
-      </footer>
-    </main>
-  </body>
+  <script src="script/labels.js"></script>
+  <script src="script/format.js"></script>
+  <script src="script/api.js"></script>
+  <script src="script/layout.js"></script>
+  <script src="script/dashboard.js"></script>
+</body>
 </html>
