@@ -29,7 +29,7 @@ from app.services.uploads import create_upload_job
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 accounts_router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
-ALLOWED_MIME = {"image/jpeg", "image/webp", "image/gif", "image/tiff"}
+ALLOWED_MIME = {"image/jpeg", "image/jpg"}
 
 
 @accounts_router.get("", response_model=list[AccountOut])
